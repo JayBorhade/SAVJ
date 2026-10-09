@@ -10,7 +10,9 @@ type Coordinates = { latitude: number; longitude: number } | null;
 
 function Recenter({ center }: { center: [number, number] }) {
   const map = useMap();
-  useEffect(() => { map.setView(center, map.getZoom()); }, [map, center[0], center[1]]);
+  const latitude = center[0];
+  const longitude = center[1];
+  useEffect(() => { map.setView([latitude, longitude], map.getZoom()); }, [map, latitude, longitude]);
   return null;
 }
 
