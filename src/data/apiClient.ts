@@ -120,6 +120,21 @@ export const savjApi = {
     return request<ApiTaskProof>(`/api/v1/tasks/${taskId}/proofs/${kind}`, { method: 'POST', body: form });
   },
   listProofs: (taskId: number) => request<ApiTaskProof[]>(`/api/v1/tasks/${taskId}/proofs`),
+  downloadProof: async (proofId: number): Promise<Blob> => {
+    const headers = new Headers();
+    const token = getAccessToken();
+    if (token) headers.set('Authorization', 'Bearer ' + token);
+    let response: Response;
+    try { response = await fetch(API_BASE_URL + '/api/v1/proofs/' + proofId + '/content', { headers }); }
+    catch { throw new Error('Cannot reach the SAVJ API.'); }
+    if (!response.ok) {
+      if (response.status === 401) clearAccessToken();
+      let message = 'Could not load proof image (' + response.status + ').';
+      try { const body = await response.json() as ApiError; if (typeof body.detail === 'string') message = body.detail; } catch { /* status fallback */ }
+      throw new Error(message);
+    }
+    return response.blob();
+  },
 };
 
 export type ApiDrive = {
