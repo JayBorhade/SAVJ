@@ -90,7 +90,6 @@ def create_task(payload: TaskCreate, user: CurrentUser, db: Database) -> Task:
     db.refresh(task)
     return task
 
-@app.get("/api/v1/tasks", response_model=list[TaskOut])
 def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
     value = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
