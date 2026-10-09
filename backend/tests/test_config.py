@@ -2,7 +2,11 @@ from app.config import Settings
 
 
 def test_production_rejects_default_secret():
-    settings = Settings(app_env="production", database_url="postgresql+psycopg://user:pass@db:5432/savj")
+    settings = Settings(
+        app_env="production",
+        database_url="postgresql+psycopg://user:pass@db:5432/savj",
+        jwt_secret="local-development-secret-change-before-deploy-000000",
+    )
     try:
         settings.validate_runtime()
     except RuntimeError as exc:
