@@ -1,7 +1,7 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json ./
+RUN npm install
 COPY . .
 # Production API calls use the same origin and are proxied by nginx.
 ENV VITE_SAVJ_API_URL=
