@@ -3,7 +3,7 @@ import {
   Activity, ArrowDownRight, ArrowRight, Bell, CalendarDays, CheckCircle2,
   ChevronDown, Compass, Filter, Flower2, HandHeart,
   Leaf, MapPin, MessageCircle, Plus, Search, Settings2, ShieldCheck,
-  Sprout, TreePine, Users, X, Clock3, Recycle, Waves, Wind
+  Sprout, TreePine, Users, UsersRound, X, Clock3, Recycle, Waves, Wind
 } from 'lucide-react';
 import './App.css';
 import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
@@ -14,6 +14,7 @@ import LiveMessages from './components/LiveMessages';
 import LiveImpact from './components/LiveImpact';
 import LiveProfile from './components/LiveProfile';
 import TaskProofViewer from './components/TaskProofViewer';
+import WorkerDirectory from './components/WorkerDirectory';
 
 type Task = {
   id: number; title: string; category: string; location: string; distance: number;
@@ -198,6 +199,7 @@ export default function App() {
   const navItems = [
     { label: 'Overview', icon: Activity },
     { label: 'Explore', icon: Compass },
+    { label: 'Workers', icon: UsersRound },
     { label: 'Community', icon: Users },
     { label: 'Messages', icon: MessageCircle },
     { label: 'My impact', icon: Sprout },
@@ -288,6 +290,8 @@ export default function App() {
                 <div className="map-panel"><div className="map-header"><strong><MapPin size={16} /> Task map</strong><span>Illustrative preview</span></div><div className="map-canvas"><div className="map-water" /><div className="map-park park-a" /><div className="map-park park-b" /><div className="map-road road-a" /><div className="map-road road-b" /><div className="map-road road-c" /><span className="map-label label-a">AUNDH</span><span className="map-label label-b">BANER</span><span className="map-label label-c">PASHAN LAKE</span>{filteredTasks.slice(0, 4).map((task, i) => <button key={task.id} className={'map-pin pin-' + i} onClick={() => setNotice(task.title + ' · ' + task.distance + ' km away')} aria-label={'Select ' + task.title}><Leaf size={15} /></button>)}<div className="map-home"><MapPin size={18} /></div></div><div className="map-legend"><span><i className="legend-dot" /> Open tasks</span><span><i className="legend-home" /> Your area</span></div><p className="map-note">{currentCoordinates ? "Radius filtering uses your browser location and coordinates stored on tasks. Tasks without coordinates are omitted from radius results." : "Enable location to calculate real distances. The illustrated map still needs a configured map-tile provider."}</p></div></div>
             </>
           )}
+
+          {activePage === 'Workers' && <WorkerDirectory backendConnected={backendConnected} onNotice={setNotice} onExplore={() => navigate('Explore')} />}
 
           {activePage === 'Community' && <LiveCommunity backendConnected={backendConnected} onNotice={setNotice} />}
 
