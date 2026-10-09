@@ -20,7 +20,7 @@ Open http://127.0.0.1:8000/docs for interactive API docs and http://127.0.0.1:80
 - Authenticated profile read/update
 - Task create/list/detail and server-enforced accept/start/submit/approve/cancel lifecycle
 - Community drive create/list/join with unique participation and capacity checks
-- Task-participant-only messaging
+- Task-participant-only messaging\n- Private before/after task proof uploads (JPEG/PNG/WebP, 8 MB limit) with metadata, task-participant-only listing/download, and worker/status authorization
 - Verified completion and drive participation impact counters
 - SQLAlchemy relational models; SQLite locally and PostgreSQL via configured URL
 - Environment-driven CORS configuration
