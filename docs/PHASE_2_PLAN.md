@@ -1,6 +1,6 @@
 # SAVJ Phase 2 — Domain and Data Foundation
 
-Status: **Implementation committed; CI checks passing**  
+Status: **Phase 2 implementation and CI verification complete**  
 Working branch: `phase-2/domain-and-validation`  
 Base: `phase-1/stabilize-and-flows`
 
