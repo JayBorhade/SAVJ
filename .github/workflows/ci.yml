@@ -2,7 +2,7 @@ name: SAVJ CI
 
 on:
   push:
-    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration, phase-5/live-community-messaging, phase-6/secure-proof-uploads]
+    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration, phase-5/live-community-messaging, phase-6/secure-proof-uploads, phase-7/migrations-and-runtime-hardening]
   pull_request:
     branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration]
 
@@ -43,5 +43,11 @@ jobs:
           cache-dependency-path: backend/requirements.txt
       - name: Install backend dependencies
         run: python -m pip install -r requirements.txt
+      - name: Verify database migration bootstrap
+        env:
+          DATABASE_URL: sqlite:///./migration-check.db
+          JWT_SECRET: test-secret-that-is-long-enough-for-local-tests
+          APP_ENV: test
+        run: python -m alembic -c alembic.ini upgrade head
       - name: Run API tests
         run: python -m pytest tests -q
