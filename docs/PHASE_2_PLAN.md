@@ -1,20 +1,18 @@
 # SAVJ Phase 2 — Domain and Data Foundation
 
-Status: **Started**  
+Status: **Implementation batch committed; CI verification pending**  
 Working branch: `phase-2/domain-and-validation`  
 Base: `phase-1/stabilize-and-flows`
 
-## Goal
+## Delivered in this branch
 
-Move business rules out of the large dashboard component so the frontend can later use a real API without rewriting task logic. Keep the existing React + TypeScript + Vite stack and treat Lovable as a visual/flow reference only.
-
-## Phase 2 work packages
-
-1. **Domain rules** — central task status type, allowed transitions, and task-draft validation.
-2. **UI integration** — use shared validation and transition rules in the current task-posting and task-detail flows.
-3. **Automated checks** — add deterministic tests for valid/invalid transitions and task validation, then include them in CI.
-4. **Persistence boundary** — define a small repository/service contract so browser-demo storage can be replaced by an API implementation.
-5. **API readiness** — document endpoint contracts, authorization expectations, error format, and the persistence model before selecting a backend provider.
+- Shared task status types and an explicit transition table.
+- Shared validation for task title, location, budget and optional schedule.
+- Existing task-posting and task-detail actions now call the shared domain rules.
+- A `TaskRepository` contract and browser-local-storage adapter, with task load/save/create routed through that boundary.
+- Automated Node test cases for allowed transitions, rejected jumps, terminal states, cancellation, valid budgets and invalid drafts.
+- CI steps for automated tests, typecheck, lint and production build.
+- Provider-neutral API/data contract covering users, tasks, task requirements, proof metadata, community drives, participation, messages and impact events.
 
 ## Lifecycle rules
 
@@ -24,12 +22,25 @@ Move business rules out of the large dashboard component so the frontend can lat
 - Awaiting approval → Completed or back to In progress (for rework)
 - Completed and Cancelled are terminal states
 
-The UI's demo buttons do not enforce real identity, ownership, payment, proof upload, or server-side authorization. These rules are domain validation, not a security boundary until enforced by an API.
+These are domain/UI rules only. They do not provide security until the API enforces authorization and transitions on the server.
 
-## Exit criteria
+## Verification checklist
 
-- Shared rules are imported by the app rather than duplicated in event handlers.
-- Invalid transitions and invalid task drafts are covered by automated tests.
-- CI runs build, typecheck, lint, and tests.
-- Demo storage remains clearly separated from future server persistence.
-- API and database choices are documented without committing credentials or pretending integrations exist.
+- [x] Shared domain rules are imported by the app.
+- [x] Task form uses shared validation.
+- [x] Demo task persistence uses the repository adapter.
+- [x] Automated tests are included in the repository.
+- [x] CI configuration includes test, typecheck, lint and build steps.
+- [x] API and data contract is documented.
+- [ ] GitHub Actions reports passing test, typecheck, lint and build jobs.
+- [ ] Review runtime behavior against the Lovable reference.
+
+## Explicitly out of scope / not yet implemented
+
+- Production API or database.
+- Authentication, sessions, KYC or server authorization.
+- Real image upload/storage and requester approval.
+- Payments, live maps/geocoding, real-time messaging and notifications.
+- Verified environmental impact accounting.
+
+The localStorage adapter is a replaceable demo adapter, not multi-user persistence. Select production providers only after deployment and credential requirements are confirmed.
