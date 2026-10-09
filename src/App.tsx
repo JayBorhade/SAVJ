@@ -6,10 +6,12 @@ import {
   Sprout, TreePine, Users, Wallet, X, Clock3, Recycle, Waves, Wind
 } from 'lucide-react';
 import './App.css';
+import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
+import { createBrowserTaskRepository } from './data/taskRepository';
 
 type Task = {
   id: number; title: string; category: string; location: string; distance: number;
-  budget: number; date: string; skills: string[]; status: 'Open' | 'Accepted' | 'In progress' | 'Awaiting approval' | 'Completed' | 'Cancelled';
+  budget: number; date: string; skills: string[]; status: TaskStatus;
   icon: 'leaf' | 'tree' | 'water' | 'recycle'; description: string;
 };
 
@@ -40,7 +42,7 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(() => localStorage.getItem('savj.onboardingDone') === 'true');
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingSkills, setOnboardingSkills] = useState<string[]>([]);
-  const [tasks, setTasks] = useState<Task[]>(() => { try { const saved=localStorage.getItem('savj.tasks'); return saved ? JSON.parse(saved) as Task[] : initialTasks; } catch { return initialTasks; } });
+  const [tasks, setTasks] = useState<Task[]>(() => { try { const repository=createBrowserTaskRepository(); return localStorage.getItem('savj.tasks') ? repository.list() : initialTasks; } catch { return initialTasks; } });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [beforeProofName, setBeforeProofName] = useState('');
   const [afterProofName, setAfterProofName] = useState('');
@@ -50,7 +52,7 @@ export default function App() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('savj.joinedDrives') || '[]') as string[]; } catch { return []; } });
-  useEffect(() => { localStorage.setItem('savj.tasks', JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { /* Browser storage may be disabled; the UI remains usable for this session. */ } }, [tasks]);
   useEffect(() => { localStorage.setItem('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
   useEffect(() => { if (profileName.trim()) localStorage.setItem('savj.profileName', profileName.trim()); }, [profileName]);
   useEffect(() => { if (profileArea.trim()) localStorage.setItem('savj.profileArea', profileArea.trim()); }, [profileArea]);
@@ -73,13 +75,12 @@ export default function App() {
   };
   const postTask = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!taskTitle.trim() || !taskLocation.trim() || !taskBudget.trim() || !Number.isFinite(Number(taskBudget)) || Number(taskBudget) < 0) { setNotice('Add a task title, location, and a valid non-negative budget.'); return; }
-    const newTask: Task = {
-      id: Date.now(), title: taskTitle.trim(), category: 'Community cleanup',
-      location: taskLocation.trim(), distance: 1.5, budget: Math.max(0, Number(taskBudget) || 0),
-      date: 'Schedule to be confirmed', skills: ['Community'], status: 'Open', icon: 'leaf',
-      description: taskDescription.trim() || 'A new local task posted by the community.'
-    };
+    const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
+    if (!validation.valid) { setNotice(Object.values(validation.errors).filter(Boolean).join(' ')); return; }
+    const newTask: Task = createBrowserTaskRepository().create(
+      { title: taskTitle, location: taskLocation, budget: validation.budget, description: taskDescription },
+      { category: 'Community cleanup', distance: 1.5, date: 'Schedule to be confirmed', skills: ['Community'], status: 'Open', icon: 'leaf' },
+    );
     setTasks((current) => [newTask, ...current]);
     setShowPostModal(false); setActivePage('Explore'); setSearch('');
     setTaskTitle(''); setTaskDescription(''); setTaskBudget('500');
@@ -193,10 +194,10 @@ export default function App() {
       {selectedTask.status==='In progress'&&<div className="proof-fields"><label>Before photo (required)<input type="file" accept="image/*" onChange={(e)=>setBeforeProofName(e.target.files?.[0]?.name||'')}/></label><label>After photo (required)<input type="file" accept="image/*" onChange={(e)=>setAfterProofName(e.target.files?.[0]?.name||'')}/></label><small>Files are not uploaded or stored; this prototype only validates that both were selected.</small></div>}
       <div className="demo-disclaimer"><ShieldCheck size={15}/> Demo task only. Actions update this browser's local state; there is no server, requester notification, verified KYC or real upload.</div>
       <div className="onboarding-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedTask(null)}>Close</button>
-      {selectedTask.status==='Open'&&<button type="button" className="primary-button" onClick={()=>{setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:'Accepted'}:t));setSelectedTask({...selectedTask,status:'Accepted'});setNotice('Task accepted in this browser demo. No requester has been notified.');}}>Accept in demo</button>}
-      {selectedTask.status==='Accepted'&&<button type="button" className="primary-button" onClick={()=>{setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:'In progress'}:t));setSelectedTask({...selectedTask,status:'In progress'});}}>Start task (demo)</button>}
-      {selectedTask.status==='In progress'&&<button type="button" className="primary-button" disabled={!beforeProofName||!afterProofName} onClick={()=>{setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:'Awaiting approval'}:t));setSelectedTask({...selectedTask,status:'Awaiting approval'});setNotice('Both proof files selected. Nothing was uploaded; task awaits demo approval.');}}>Submit proof (demo)</button>}
-      {selectedTask.status==='Awaiting approval'&&<button type="button" className="primary-button" onClick={()=>{setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:'Completed'}:t));setSelectedTask({...selectedTask,status:'Completed'});setNotice('Demo task marked complete. No real requester approval was recorded.');}}>Simulate requester approval</button>}
+      {selectedTask.status==='Open'&&<button type="button" className="primary-button" onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'Accepted');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task accepted in this browser demo. No requester has been notified.');}}>Accept in demo</button>}
+      {selectedTask.status==='Accepted'&&<button type="button" className="primary-button" onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'In progress');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});}}>Start task (demo)</button>}
+      {selectedTask.status==='In progress'&&<button type="button" className="primary-button" disabled={!beforeProofName||!afterProofName} onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'Awaiting approval');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Both proof files selected. Nothing was uploaded; task awaits demo approval.');}}>Submit proof (demo)</button>}
+      {selectedTask.status==='Awaiting approval'&&<button type="button" className="primary-button" onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'Completed');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Demo task marked complete. No real requester approval was recorded.');}}>Simulate requester approval</button>}
       </div></section></div>}
       {showPostModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPostModal(false); }}><form className="post-modal" onSubmit={postTask}><div className="modal-heading"><div><span className="eyebrow">START SOMETHING GOOD</span><h2>Post a community task</h2><p>Tell your neighbourhood what needs doing.</p></div><button type="button" className="icon-button" onClick={() => setShowPostModal(false)} aria-label="Close modal"><X size={20} /></button></div><label>Task title<input required value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Clean our society garden" /></label><label>Location<input required value={taskLocation} onChange={(e) => setTaskLocation(e.target.value)} placeholder="Area or neighbourhood" /></label><label>Budget (₹)<input type="number" min="0" value={taskBudget} onChange={(e) => setTaskBudget(e.target.value)} /></label><label>What needs to be done?<textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Add details, expectations, or timing..." rows={3} /></label><div className="modal-footnote"><ShieldCheck size={16} /> Keep task details clear and community-friendly.</div><button className="primary-button submit-task" type="submit"><Plus size={17} /> Publish task to demo feed</button></form></div>}
     </div>
