@@ -116,6 +116,8 @@ export default function App() {
   }, [backendConnected, currentCoordinates, radius]);
 
 
+
+
   const filteredTasks = useMemo(() => tasks.map((task) => {
     const distance = currentCoordinates && task.latitude != null && task.longitude != null
       ? distanceKm(currentCoordinates.latitude, currentCoordinates.longitude, task.latitude, task.longitude)
