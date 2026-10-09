@@ -92,6 +92,7 @@ export const savjApi = {
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
   me: () => request<ApiUser>('/api/v1/me'),
+  listWorkers: (search = '', skill = '') => { const params = new URLSearchParams({ limit: '100' }); if (search.trim()) params.set('search', search.trim()); if (skill.trim()) params.set('skill', skill.trim()); return request<ApiWorker[]>(`/api/v1/workers?${params.toString()}`); },
   updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
   listTasks: (filters?: { latitude?: number; longitude?: number; radius_km?: number }) => {
     const params = new URLSearchParams({ limit: '100' });
@@ -143,3 +144,5 @@ export type ApiDrive = {
 };
 export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
 export type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
+
+export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; created_at: string };
