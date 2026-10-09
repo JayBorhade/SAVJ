@@ -48,6 +48,8 @@ class TaskCreate(BaseModel):
     location_text: str = Field(min_length=2, max_length=200)
     budget_rupees: int = Field(ge=0, le=10000000)
     scheduled_at: datetime | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     @field_validator("title", "location_text", "category")
     @classmethod
     def trim_task_fields(cls, value: str) -> str:
@@ -63,6 +65,8 @@ class TaskOut(BaseModel):
     description: str
     category: str
     location_text: str
+    latitude: float | None = None
+    longitude: float | None = None
     budget_minor_units: int
     currency: str
     status: str
