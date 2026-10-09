@@ -62,3 +62,13 @@ The current dashboard uses sample data. Tasks, joined drives, and basic onboardi
 ## Development rule
 
 Never claim a demo-only interaction is production-ready. Keep secrets out of Git, and use .env.example to document required configuration without real credentials.
+
+
+### Phase 2 — Domain/data foundation (implementation batch)
+
+- Shared task lifecycle rules and task draft validation live in `src/domain/taskWorkflow.ts`.
+- Task UI actions use those shared rules instead of inline transition assumptions.
+- `src/data/taskRepository.ts` defines a replaceable repository boundary; its current adapter still uses browser localStorage only.
+- `tests/taskWorkflow.test.ts` covers lifecycle transitions and task validation.
+- CI is configured to run automated tests, typecheck, lint and production build. **Results are pending; do not treat configuration as a passing run.**
+- `docs/API_AND_DATA_CONTRACT.md` describes proposed endpoints, core data models and server-side security invariants. No production backend or database has been provisioned.
