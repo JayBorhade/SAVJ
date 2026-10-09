@@ -8,7 +8,7 @@ export default function TaskProofViewer({ taskId, onNotice }: { taskId: number; 
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    let urls: string[] = [];
+    const urls: string[] = [];
     setLoading(true);
     void (async () => {
       try {
