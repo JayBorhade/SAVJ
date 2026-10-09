@@ -1,6 +1,6 @@
 import type { TaskStatus } from '../domain/taskWorkflow';
 
-const API_BASE_URL = (import.meta.env.VITE_SAVJ_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+const API_BASE_URL = (import.meta.env.VITE_SAVJ_API_URL || (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000')).replace(/\/$/, '');
 const TOKEN_KEY = 'savj.accessToken';
 
 export type ApiUser = {
