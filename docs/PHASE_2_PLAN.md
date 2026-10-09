@@ -1,6 +1,6 @@
 # SAVJ Phase 2 — Domain and Data Foundation
 
-Status: **Implementation committed; automated verification in progress**  
+Status: **Implementation committed; CI checks passing**  
 Working branch: `phase-2/domain-and-validation`  
 Base: `phase-1/stabilize-and-flows`
 
@@ -33,7 +33,7 @@ These are domain/UI rules only. They do not provide security until the API enfor
 - [x] Automated domain and repository-adapter tests are included in the repository.
 - [x] CI configuration includes test, typecheck, lint and build steps.
 - [x] API and data contract is documented.
-- [ ] GitHub Actions reports passing test, typecheck, lint and build jobs.
+- [x] GitHub Actions reports passing test, typecheck, lint and build jobs (run 37887981182).
 - [ ] Review runtime behavior against the Lovable reference.
 
 ## Explicitly out of scope / not yet implemented
