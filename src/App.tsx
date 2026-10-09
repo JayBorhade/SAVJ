@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowRight, Bell, CalendarDays, CheckCircle2,
   ChevronDown, CircleHelp, Compass, Filter, Flower2, HandHeart, Heart,
