@@ -92,3 +92,30 @@ def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypa
     assert invalid.status_code == 415
     assert client.post(f"/api/v1/tasks/{task_id}/proofs/unknown", headers=auth(worker_token),
                        files={"file": ("before.png", image_bytes, "image/png")}).status_code == 422
+
+
+def test_radius_discovery_uses_task_coordinates():
+    owner_token, _ = register("geoowner@example.com", "Geo Owner")
+    headers = auth(owner_token)
+    near = client.post("/api/v1/tasks", headers=headers, json={
+        "title": "Nearby cleanup", "location_text": "Pune", "budget_rupees": 0,
+        "latitude": 18.5204, "longitude": 73.8567
+    })
+    far = client.post("/api/v1/tasks", headers=headers, json={
+        "title": "Far cleanup", "location_text": "Mumbai", "budget_rupees": 0,
+        "latitude": 19.0760, "longitude": 72.8777
+    })
+    assert near.status_code == 201, near.text
+    assert far.status_code == 201, far.text
+    found = client.get("/api/v1/tasks", headers=headers, params={
+        "latitude": 18.5204, "longitude": 73.8567, "radius_km": 5
+    })
+    assert found.status_code == 200, found.text
+    assert [item["title"] for item in found.json()] == ["Nearby cleanup"]
+    assert client.get("/api/v1/tasks", headers=headers, params={"latitude": 18.5}).status_code == 422
+    assert client.get("/api/v1/tasks", headers=headers, params={"radius_km": 5}).status_code == 422
+    invalid = client.post("/api/v1/tasks", headers=headers, json={
+        "title": "Invalid coordinates", "location_text": "Pune", "budget_rupees": 0,
+        "latitude": 100, "longitude": 73
+    })
+    assert invalid.status_code == 422
