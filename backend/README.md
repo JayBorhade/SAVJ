@@ -10,6 +10,7 @@ From the repository root:
     .\backend\.venv\Scripts\Activate.ps1
     python -m pip install -r backend/requirements.txt
     Copy-Item backend/.env.example backend/.env
+    python -m alembic -c backend/alembic.ini upgrade head
     python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 
 Open http://127.0.0.1:8000/docs for interactive API docs and http://127.0.0.1:8000/health for health.
