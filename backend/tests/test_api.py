@@ -62,3 +62,33 @@ def test_drives_and_task_scoped_messages():
     task = client.post("/api/v1/tasks",headers=auth(owner_token),json={"title":"Garden cleanup","location_text":"Pune","budget_rupees":0}).json()
     assert client.get(f"/api/v1/tasks/{task['id']}/messages",headers=auth(attendee_token)).status_code == 403
     assert client.get(f"/api/v1/tasks/{task['id']}/messages",headers=auth(owner_token)).status_code == 200
+
+
+def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypatch):
+    from app import main as main_module
+    monkeypatch.setattr(main_module, "UPLOAD_DIR", tmp_path / "private-proof-files")
+    requester_token, _ = register("proofowner@example.com", "Proof Owner")
+    worker_token, worker = register("proofworker@example.com", "Proof Worker")
+    outsider_token, _ = register("proofoutsider@example.com", "Proof Outsider")
+    task = client.post("/api/v1/tasks", headers=auth(requester_token), json={
+        "title": "Clean garden beds", "location_text": "Pune", "budget_rupees": 100
+    }).json()
+    task_id = task["id"]
+    assert client.post(f"/api/v1/tasks/{task_id}/accept", headers=auth(worker_token)).status_code == 200
+    assert client.post(f"/api/v1/tasks/{task_id}/start", headers=auth(worker_token)).status_code == 200
+    image_bytes = b"\\x89PNG\\r\\n\\x1a\\n" + b"test-image-payload"
+    uploaded = client.post(f"/api/v1/tasks/{task_id}/proofs/before", headers=auth(worker_token),
+                           files={"file": ("before.png", image_bytes, "image/png")})
+    assert uploaded.status_code == 201, uploaded.text
+    proof = uploaded.json()
+    assert proof["proof_kind"] == "before"
+    assert proof["content_type"] == "image/png"
+    assert not (tmp_path / "public" / proof["original_name"]).exists()
+    assert client.get(f"/api/v1/tasks/{task_id}/proofs", headers=auth(requester_token)).json()[0]["id"] == proof["id"]
+    assert client.get(f"/api/v1/proofs/{proof['id']}/content", headers=auth(requester_token)).content == image_bytes
+    assert client.get(f"/api/v1/proofs/{proof['id']}/content", headers=auth(outsider_token)).status_code == 403
+    invalid = client.post(f"/api/v1/tasks/{task_id}/proofs/after", headers=auth(worker_token),
+                          files={"file": ("fake.png", b"not an image", "image/png")})
+    assert invalid.status_code == 415
+    assert client.post(f"/api/v1/tasks/{task_id}/proofs/unknown", headers=auth(worker_token),
+                       files={"file": ("before.png", image_bytes, "image/png")}).status_code == 422
