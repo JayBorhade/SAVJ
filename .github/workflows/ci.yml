@@ -2,9 +2,18 @@ name: SAVJ CI
 
 on:
   push:
-    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration, phase-5/live-community-messaging, phase-6/secure-proof-uploads, phase-7/migrations-and-runtime-hardening, phase-8/geospatial-discovery, phase-9/live-impact-profile, phase-10/proof-review-and-release-tests, phase-11/containerized-full-stack, phase-12/task-scheduling-and-categories, phase-13/task-lifecycle-polish, phase-14/worker-directory, phase-15/interactive-map]
+    branches:
+      - main
+      - "phase-*"
+      - "phase-*/**"
   pull_request:
-    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration]
+    branches:
+      - main
+      - "phase-*"
+      - "phase-*/**"
+
+permissions:
+  contents: read
 
 jobs:
   frontend:
@@ -50,6 +59,9 @@ jobs:
           APP_ENV: test
         run: python -m alembic -c alembic.ini upgrade head
       - name: Run API tests
+        env:
+          APP_ENV: test
+          JWT_SECRET: test-secret-that-is-long-enough-for-local-tests
         run: python -m pytest tests -q
 
   containers:
