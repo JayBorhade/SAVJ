@@ -92,6 +92,7 @@ export const savjApi = {
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
   me: () => request<ApiUser>('/api/v1/me'),
+  updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
   listTasks: (filters?: { latitude?: number; longitude?: number; radius_km?: number }) => {
     const params = new URLSearchParams({ limit: '100' });
     if (filters?.latitude !== undefined && filters.longitude !== undefined) {
