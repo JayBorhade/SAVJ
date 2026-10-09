@@ -21,6 +21,8 @@ export type ApiTask = {
   description: string;
   category: string;
   location_text: string;
+  latitude: number | null;
+  longitude: number | null;
   budget_minor_units: number;
   currency: string;
   status: TaskStatus;
@@ -90,8 +92,16 @@ export const savjApi = {
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
   me: () => request<ApiUser>('/api/v1/me'),
-  listTasks: () => request<ApiTask[]>('/api/v1/tasks?limit=100'),
-  createTask: (payload: { title: string; description: string; category: string; location_text: string; budget_rupees: number }) =>
+  listTasks: (filters?: { latitude?: number; longitude?: number; radius_km?: number }) => {
+    const params = new URLSearchParams({ limit: '100' });
+    if (filters?.latitude !== undefined && filters.longitude !== undefined) {
+      params.set('latitude', String(filters.latitude));
+      params.set('longitude', String(filters.longitude));
+      if (filters.radius_km !== undefined) params.set('radius_km', String(filters.radius_km));
+    }
+    return request<ApiTask[]>(`/api/v1/tasks?${params.toString()}`);
+  },
+  createTask: (payload: { title: string; description: string; category: string; location_text: string; budget_rupees: number; latitude?: number | null; longitude?: number | null }) =>
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
