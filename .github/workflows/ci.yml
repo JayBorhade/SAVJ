@@ -2,7 +2,7 @@ name: SAVJ CI
 
 on:
   push:
-    branches: [main, phase-1/stabilize-and-flows]
+    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation]
   pull_request:
     branches: [main]
 
