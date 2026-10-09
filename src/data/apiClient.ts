@@ -102,7 +102,7 @@ export const savjApi = {
     }
     return request<ApiTask[]>(`/api/v1/tasks?${params.toString()}`);
   },
-  createTask: (payload: { title: string; description: string; category: string; location_text: string; budget_rupees: number; latitude?: number | null; longitude?: number | null }) =>
+  createTask: (payload: { title: string; description: string; category: string; location_text: string; budget_rupees: number; latitude?: number | null; longitude?: number | null; scheduled_at?: string | null }) =>
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
