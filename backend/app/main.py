@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
 from .models import CommunityDrive, DriveParticipation, ImpactEvent, Message, Task, TaskProof, User
-from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate
+from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 
 settings = get_settings()
@@ -200,6 +200,22 @@ def join_drive(drive_id: int, user: CurrentUser, db: Database) -> dict[str, str]
         db.rollback()
         return {"status":"already_joined"}
     return {"status":"joined"}
+
+
+@app.get("/api/v1/workers", response_model=list[WorkerOut])
+def list_workers(db: Database, user: CurrentUser, search: str | None = None, skill: str | None = None, limit: int = Query(default=50, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[WorkerOut]:
+    query = select(User).where(User.is_active.is_(True), User.purpose.in_(["Worker", "Both"]))
+    if search:
+        term = "%" + search.strip()[:100] + "%"
+        query = query.where((User.display_name.ilike(term)) | (User.locality.ilike(term)))
+    people = list(db.scalars(query.order_by(User.created_at.desc()).offset(offset).limit(limit)).all())
+    results = []
+    for person in people:
+        skills = json.loads(person.skills_json)
+        if skill and not any(skill.casefold() in item.casefold() for item in skills):
+            continue
+        results.append(WorkerOut(id=person.id, display_name=person.display_name, locality=person.locality, purpose=person.purpose, skills=skills, created_at=person.created_at))
+    return results
 
 @app.get("/api/v1/me/impact")
 def my_impact(user: CurrentUser, db: Database) -> dict[str, int]:
