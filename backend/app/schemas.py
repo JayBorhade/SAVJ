@@ -107,3 +107,14 @@ class MessageOut(BaseModel):
     body: str
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class TaskProofOut(BaseModel):
+    id: int
+    task_id: int
+    uploader_id: int
+    proof_kind: str
+    original_name: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
