@@ -51,3 +51,26 @@ test('repository supplies a safe default description when omitted', () => {
   assert.equal(task.description, 'A new local task posted by the community.');
   assert.equal(task.budget, 0);
 });
+
+test('repository ignores structurally invalid stored records', () => {
+  const storage = createMemoryStorage();
+  storage.setItem('savj.tasks', JSON.stringify([
+    { id: 1, title: 'Missing fields' },
+    {
+      id: 2,
+      title: 'Valid task',
+      category: 'Cleaning',
+      location: 'Pune',
+      distance: 2,
+      budget: 100,
+      date: 'Today',
+      skills: ['Cleaner'],
+      status: 'Open',
+      icon: 'leaf',
+      description: 'Valid record',
+    },
+  ]));
+  const tasks = new LocalStorageTaskRepository(storage).list();
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].title, 'Valid task');
+});
