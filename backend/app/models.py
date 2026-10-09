@@ -74,3 +74,15 @@ class ImpactEvent(Base):
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class TaskProof(Base):
+    __tablename__ = "task_proofs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    uploader_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    proof_kind: Mapped[str] = mapped_column(String(16))
+    original_name: Mapped[str] = mapped_column(String(255))
+    storage_name: Mapped[str] = mapped_column(String(80), unique=True)
+    content_type: Mapped[str] = mapped_column(String(32))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
