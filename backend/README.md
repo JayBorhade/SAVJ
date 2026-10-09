@@ -13,7 +13,7 @@ From the repository root:
     python -m alembic -c backend/alembic.ini upgrade head
     python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
 
-Open http://127.0.0.1:8000/docs for interactive API docs and http://127.0.0.1:8000/health for health.
+Run the Alembic migration command before starting the API. Open http://127.0.0.1:8000/docs for interactive API docs and http://127.0.0.1:8000/health for health.
 
 ## Implemented
 
@@ -35,6 +35,13 @@ Open http://127.0.0.1:8000/docs for interactive API docs and http://127.0.0.1:80
 - GET/POST /api/v1/drives and POST /api/v1/drives/{id}/join
 - GET /api/v1/me/impact
 - GET/POST /api/v1/tasks/{id}/messages
+
+## Database migrations
+
+- The first migration is an idempotent baseline for existing development databases.
+- Existing databases created before proof uploads need an explicit migration to add the new proof metadata table; the baseline does not alter existing tables. Back up any database before migrating.
+- Run from the repository root: `python -m alembic -c backend/alembic.ini upgrade head`.
+- New schema changes should be authored as explicit Alembic revisions, not by relying on startup `create_all`.
 
 ## Production limitations
 
