@@ -18,5 +18,11 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
-      - name: Typecheck and build
+      - name: Run automated domain tests
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Production build
         run: npm run build
