@@ -115,4 +115,5 @@ export type ApiDrive = {
   id: number; organizer_id: number; title: string; description: string; location_text: string;
   starts_at: string; capacity: number | null; status: string; participant_count: number;
 };
-export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };\nexport type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
+export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
+export type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
