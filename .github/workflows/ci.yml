@@ -51,3 +51,13 @@ jobs:
         run: python -m alembic -c alembic.ini upgrade head
       - name: Run API tests
         run: python -m pytest tests -q
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Build frontend image
+        run: docker build -f Dockerfile.frontend -t savj-frontend:ci .
+      - name: Build backend image
+        run: docker build -f Dockerfile.backend -t savj-backend:ci .
