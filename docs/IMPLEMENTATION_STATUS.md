@@ -16,7 +16,8 @@ Implemented in the current repository:
 - Community drives with join-state interactions.
 - Task-posting modal with field validation; tasks persist in browser local storage (demo only).
 - First-run onboarding for name, area and participation purpose; personalized greeting and location tag.
-- Task-detail modal and explicitly labelled demo acceptance action.
+- Task-detail modal with demo lifecycle transitions: open → accepted → in progress → awaiting approval → completed.
+- Completion proof gate requiring selection of both before and after image files (demo validation only; files are not uploaded).
 - Demo impact values explicitly labelled as sample data.
 - Impact page with sample achievements and activity history.
 - Messages, profile, and settings placeholder screens.
@@ -31,7 +32,7 @@ The current dashboard uses sample data. Tasks, joined drives, and basic onboardi
 ### Phase 1 — Stabilization in progress
 - Initial onboarding and task-detail flow committed to the working branch.
 - Demo impact figures labelled as sample data.
-- Remaining: full lifecycle, proof validation, profile/skills persistence, accessibility review, automated tests, and CI verification.
+- Remaining: real server-side lifecycle/authorization, actual image uploads, profile/skills persistence, accessibility review, automated tests, and CI verification.
 
 ### Milestone 2 — Frontend workflows
 - Create a structured task details view and task lifecycle states.
