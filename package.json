@@ -9,7 +9,7 @@
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
     "preview": "vite preview --host",
-    "test": "tsx --test tests/taskWorkflow.test.ts"
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "lucide-react": "^0.446.0",
