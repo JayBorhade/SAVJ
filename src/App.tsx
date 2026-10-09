@@ -172,6 +172,7 @@ export default function App() {
     event.preventDefault();
     const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
     if (!validation.valid) { setNotice(Object.values(validation.errors).filter(Boolean).join(' ')); return; }
+    if (taskScheduledAt && (!Number.isFinite(new Date(taskScheduledAt).getTime()) || new Date(taskScheduledAt).getTime() <= Date.now())) { setNotice('Choose a future date and time, or leave the schedule blank.'); return; }
     if (backendConnected) {
       setApiBusy(true);
       try {
