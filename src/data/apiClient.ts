@@ -95,6 +95,18 @@ export const savjApi = {
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
-  listDrives: () => request<Array<{ id: number; title: string; description: string; location_text: string; starts_at: string; capacity: number | null; status: string; participant_count: number }>>('/api/v1/drives'),
+  listDrives: () => request<Array<{ id: number; organizer_id: number; title: string; description: string; location_text: string; starts_at: string; capacity: number | null; status: string; participant_count: number }>>('/api/v1/drives'),
   joinDrive: (id: number) => request<{ status: string }>(`/api/v1/drives/${id}/join`, { method: 'POST' }),
+  createDrive: (payload: { title: string; description: string; location_text: string; starts_at: string; capacity: number | null }) =>
+    request<ApiDrive>('/api/v1/drives', { method: 'POST', body: JSON.stringify(payload) }),
+  listMessages: (taskId: number) => request<ApiMessage[]>(`/api/v1/tasks/${taskId}/messages`),
+  sendMessage: (taskId: number, body: string) =>
+    request<ApiMessage>(`/api/v1/tasks/${taskId}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
+  myImpact: () => request<{ verified_completed_tasks: number; community_drives_joined: number }>('/api/v1/me/impact'),
 };
+
+export type ApiDrive = {
+  id: number; organizer_id: number; title: string; description: string; location_text: string;
+  starts_at: string; capacity: number | null; status: string; participant_count: number;
+};
+export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
