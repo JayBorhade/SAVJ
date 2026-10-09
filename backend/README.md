@@ -19,7 +19,7 @@ Run the Alembic migration command before starting the API. Open http://127.0.0.1
 
 - Registration/login with PBKDF2 password hashes and expiring signed bearer tokens
 - Authenticated profile read/update
-- Task create/list/detail and server-enforced accept/start/submit/approve/cancel lifecycle
+- Task create/list/detail, optional latitude/longitude and radius-filtered discovery, plus server-enforced accept/start/submit/approve/cancel lifecycle
 - Community drive create/list/join with unique participation and capacity checks
 - Task-participant-only messaging\n- Private before/after task proof uploads (JPEG/PNG/WebP, 8 MB limit) with metadata, task-participant-only listing/download, and worker/status authorization
 - Verified completion and drive participation impact counters
