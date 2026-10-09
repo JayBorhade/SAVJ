@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 from uuid import uuid4
-from datetime import datetime, timezone
+from datetime import datetime, timezone\nfrom math import asin, cos, radians, sin, sqrt
 from typing import Annotated
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -83,20 +83,39 @@ def update_me(payload: UserUpdate, user: CurrentUser, db: Database) -> UserOut:
 
 @app.post("/api/v1/tasks", response_model=TaskOut, status_code=201)
 def create_task(payload: TaskCreate, user: CurrentUser, db: Database) -> Task:
-    task = Task(requester_id=user.id, title=payload.title.strip(), description=payload.description.strip(), category=payload.category.strip(), location_text=payload.location_text.strip(), budget_minor_units=payload.budget_rupees * 100, scheduled_at=payload.scheduled_at, status="Open")
+    task = Task(requester_id=user.id, title=payload.title.strip(), description=payload.description.strip(), category=payload.category.strip(), location_text=payload.location_text.strip(), latitude=payload.latitude, longitude=payload.longitude, budget_minor_units=payload.budget_rupees * 100, scheduled_at=payload.scheduled_at, status="Open")
     db.add(task)
     db.commit()
     db.refresh(task)
     return task
 
 @app.get("/api/v1/tasks", response_model=list[TaskOut])
-def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Query(default=None, alias="status"), category: str | None = None, search: str | None = None, limit: int = Query(default=30, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[Task]:
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
+    value = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+    return 6371.0088 * 2 * asin(sqrt(min(1.0, value)))
+
+@app.get("/api/v1/tasks", response_model=list[TaskOut])
+def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Query(default=None, alias="status"), category: str | None = None, search: str | None = None, latitude: float | None = Query(default=None, ge=-90, le=90), longitude: float | None = Query(default=None, ge=-180, le=180), radius_km: float | None = Query(default=None, gt=0, le=100), limit: int = Query(default=30, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[Task]:
+    if (latitude is None) != (longitude is None):
+        raise HTTPException(status_code=422, detail="Latitude and longitude must be supplied together.")
+    if radius_km is not None and latitude is None:
+        raise HTTPException(status_code=422, detail="A radius requires latitude and longitude.")
     query = select(Task)
     if status_filter:
         if status_filter not in {"Open", "Accepted", "In progress", "Awaiting approval", "Completed", "Cancelled"}: raise HTTPException(status_code=422, detail="Unsupported task status.")
         query = query.where(Task.status == status_filter)
     if category: query = query.where(Task.category == category)
     if search: query = query.where(Task.title.ilike("%" + search[:100] + "%"))
+    if latitude is not None and longitude is not None and radius_km is not None:
+        lat_delta = radius_km / 110.574
+        lon_delta = min(180.0, radius_km / max(0.1, 111.320 * cos(radians(latitude))))
+        query = query.where(Task.latitude.is_not(None), Task.longitude.is_not(None),
+                            Task.latitude.between(max(-90, latitude-lat_delta), min(90, latitude+lat_delta)),
+                            Task.longitude.between(max(-180, longitude-lon_delta), min(180, longitude+lon_delta)))
+        candidates = list(db.scalars(query.order_by(Task.created_at.desc())).all())
+        nearby = [task for task in candidates if _distance_km(latitude, longitude, task.latitude, task.longitude) <= radius_km]
+        return nearby[offset:offset+limit]
     return list(db.scalars(query.order_by(Task.created_at.desc()).offset(offset).limit(limit)).all())
 
 @app.get("/api/v1/tasks/{task_id}", response_model=TaskOut)
