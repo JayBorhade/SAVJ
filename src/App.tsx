@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
+import { createBrowserTaskRepository } from './data/taskRepository';
 
 type Task = {
   id: number; title: string; category: string; location: string; distance: number;
@@ -41,7 +42,7 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(() => localStorage.getItem('savj.onboardingDone') === 'true');
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingSkills, setOnboardingSkills] = useState<string[]>([]);
-  const [tasks, setTasks] = useState<Task[]>(() => { try { const saved=localStorage.getItem('savj.tasks'); return saved ? JSON.parse(saved) as Task[] : initialTasks; } catch { return initialTasks; } });
+  const [tasks, setTasks] = useState<Task[]>(() => { try { const repository=createBrowserTaskRepository(); return localStorage.getItem('savj.tasks') ? repository.list() : initialTasks; } catch { return initialTasks; } });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [beforeProofName, setBeforeProofName] = useState('');
   const [afterProofName, setAfterProofName] = useState('');
@@ -51,7 +52,7 @@ export default function App() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('savj.joinedDrives') || '[]') as string[]; } catch { return []; } });
-  useEffect(() => { localStorage.setItem('savj.tasks', JSON.stringify(tasks)); }, [tasks]);
+  useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { setNotice('Unable to save demo tasks in this browser. Check storage availability.'); } }, [tasks]);
   useEffect(() => { localStorage.setItem('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
   useEffect(() => { if (profileName.trim()) localStorage.setItem('savj.profileName', profileName.trim()); }, [profileName]);
   useEffect(() => { if (profileArea.trim()) localStorage.setItem('savj.profileArea', profileArea.trim()); }, [profileArea]);
@@ -76,12 +77,10 @@ export default function App() {
     event.preventDefault();
     const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
     if (!validation.valid) { setNotice(Object.values(validation.errors).filter(Boolean).join(' ')); return; }
-    const newTask: Task = {
-      id: Date.now(), title: taskTitle.trim(), category: 'Community cleanup',
-      location: taskLocation.trim(), distance: 1.5, budget: validation.budget,
-      date: 'Schedule to be confirmed', skills: ['Community'], status: 'Open', icon: 'leaf',
-      description: taskDescription.trim() || 'A new local task posted by the community.'
-    };
+    const newTask: Task = createBrowserTaskRepository().create(
+      { title: taskTitle, location: taskLocation, budget: validation.budget, description: taskDescription },
+      { category: 'Community cleanup', distance: 1.5, date: 'Schedule to be confirmed', skills: ['Community'], status: 'Open', icon: 'leaf' },
+    );
     setTasks((current) => [newTask, ...current]);
     setShowPostModal(false); setActivePage('Explore'); setSearch('');
     setTaskTitle(''); setTaskDescription(''); setTaskBudget('500');
