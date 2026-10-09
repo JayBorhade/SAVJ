@@ -2,9 +2,9 @@ name: SAVJ CI
 
 on:
   push:
-    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database]
+    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration]
   pull_request:
-    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation]
+    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration]
 
 jobs:
   frontend:
