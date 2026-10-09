@@ -105,14 +105,15 @@ docs/
 - [x] Onboarding flow
 - [x] Task/worker requirements
 - [x] Radius-based discovery concept
-- [ ] Frontend implementation
+- [x] Frontend foundation and initial onboarding/task-detail demo flows
+- [ ] Full frontend workflow completion
 - [ ] Backend/API
 - [ ] Database
 - [ ] Map integration
 - [ ] Authentication and KYC workflow
 - [ ] Task lifecycle
 - [ ] Community module
-- [ ] Testing
+- [ ] Automated workflow tests and verified CI checks
 - [ ] Deployment
 
 ## Security
@@ -124,3 +125,8 @@ Never commit API keys, tokens, passwords, or private credentials. Use environmen
 SAVJ is being developed as a Community Engagement Project by students of the Artificial Intelligence & Machine Learning department at ISBM College of Engineering, Pune.
 
 **Greener and Cleaner India.** 🇮🇳🌱
+
+
+## Current implementation note
+
+The GitHub branch `phase-1/stabilize-and-flows` contains the current Phase 1 onboarding and task-detail work. The first-run onboarding captures a name, area and participation purpose; demo tasks and joined drives are saved in the current browser using local storage. Dashboard impact values are labelled as sample data. This is still a frontend prototype: local browser storage is not a backend, and task acceptance does not notify a requester or enforce authorization. See [Phase 1 audit criteria](docs/PHASE_1_AUDIT.md) for remaining work.
