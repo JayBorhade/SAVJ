@@ -99,6 +99,13 @@ export default function App() {
   const [taskBudget, setTaskBudget] = useState('500');
   const [taskDescription, setTaskDescription] = useState('');
   const [notice, setNotice] = useState('');
+  const [apiUser, setApiUser] = useState<ApiUser | null>(null);
+  const [apiEmail, setApiEmail] = useState('');
+  const [apiPassword, setApiPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [apiBusy, setApiBusy] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(false);
+
   useEffect(() => {
     if (!backendConnected || !currentCoordinates) return;
     let cancelled = false;
@@ -107,12 +114,7 @@ export default function App() {
       .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Radius search failed.'); });
     return () => { cancelled = true; };
   }, [backendConnected, currentCoordinates, radius]);
-  const [apiUser, setApiUser] = useState<ApiUser | null>(null);
-  const [apiEmail, setApiEmail] = useState('');
-  const [apiPassword, setApiPassword] = useState('');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [apiBusy, setApiBusy] = useState(false);
-  const [backendConnected, setBackendConnected] = useState(false);
+
 
   const filteredTasks = useMemo(() => tasks.map((task) => {
     const distance = currentCoordinates && task.latitude != null && task.longitude != null
