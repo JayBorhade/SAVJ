@@ -26,6 +26,24 @@ export interface TaskRepository {
 
 const TASKS_KEY = 'savj.tasks';
 
+function isSavjTaskRecord(value: unknown): value is SavjTaskRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const task = value as Record<string, unknown>;
+  const validStatuses: readonly string[] = ['Open', 'Accepted', 'In progress', 'Awaiting approval', 'Completed', 'Cancelled'];
+  const validIcons: readonly string[] = ['leaf', 'tree', 'water', 'recycle'];
+  return Number.isFinite(task.id)
+    && typeof task.title === 'string'
+    && typeof task.category === 'string'
+    && typeof task.location === 'string'
+    && typeof task.distance === 'number' && Number.isFinite(task.distance)
+    && typeof task.budget === 'number' && Number.isFinite(task.budget) && task.budget >= 0
+    && typeof task.date === 'string'
+    && Array.isArray(task.skills) && task.skills.every((skill) => typeof skill === 'string')
+    && typeof task.status === 'string' && validStatuses.includes(task.status)
+    && typeof task.icon === 'string' && validIcons.includes(task.icon)
+    && typeof task.description === 'string';
+}
+
 /** Browser-only prototype adapter. Not shared, secure, or suitable for production persistence. */
 export class LocalStorageTaskRepository implements TaskRepository {
   constructor(private readonly storage: Pick<Storage, 'getItem' | 'setItem'>) {}
@@ -35,7 +53,7 @@ export class LocalStorageTaskRepository implements TaskRepository {
       const value = this.storage.getItem(TASKS_KEY);
       if (!value) return [];
       const parsed: unknown = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed as SavjTaskRecord[] : [];
+      return Array.isArray(parsed) ? parsed.filter(isSavjTaskRecord) : [];
     } catch {
       return [];
     }
