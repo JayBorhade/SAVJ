@@ -8,6 +8,7 @@ import {
 import './App.css';
 import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
 import { createBrowserTaskRepository } from './data/taskRepository';
+import { clearAccessToken, getAccessToken, savjApi, type ApiTask, type ApiUser } from './data/apiClient';
 
 type Task = {
   id: number; title: string; category: string; location: string; distance: number;
@@ -26,6 +27,12 @@ const drives = [
   { title: 'Pashan Lake Clean-up', date: 'SUN, OCT 12 · 7:30 AM', place: 'Pashan Lake, Pune', joined: 24, kind: 'water' },
   { title: 'Green Pune: Native Trees', date: 'SAT, OCT 18 · 9:00 AM', place: 'Baner Biodiversity Park', joined: 38, kind: 'tree' },
 ];
+
+function fromApiTask(task: ApiTask): Task {
+  const date = task.scheduled_at ? new Date(task.scheduled_at).toLocaleString() : 'Schedule to be confirmed';
+  const icon: Task['icon'] = /tree|plant/i.test(task.category + task.title) ? 'tree' : /water|lake/i.test(task.category + task.title) ? 'water' : /recycl|waste/i.test(task.category + task.title) ? 'recycle' : 'leaf';
+  return { id: task.id, title: task.title, category: task.category, location: task.location_text, distance: 0, budget: task.budget_minor_units / 100, date, skills: [], status: task.status, icon, description: task.description };
+}
 
 function TaskIcon({ kind }: { kind: Task['icon'] }) {
   if (kind === 'tree') return <TreePine size={21} />;
@@ -56,11 +63,31 @@ export default function App() {
   useEffect(() => { localStorage.setItem('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
   useEffect(() => { if (profileName.trim()) localStorage.setItem('savj.profileName', profileName.trim()); }, [profileName]);
   useEffect(() => { if (profileArea.trim()) localStorage.setItem('savj.profileArea', profileArea.trim()); }, [profileArea]);
+  useEffect(() => {
+    if (!getAccessToken()) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [user, apiTasks] = await Promise.all([savjApi.me(), savjApi.listTasks()]);
+        if (cancelled) return;
+        setApiUser(user); setBackendConnected(true); setProfileName(user.display_name); setProfileArea(user.locality); setPurpose(user.purpose);
+        setTasks(apiTasks.map(fromApiTask));
+        setNotice('Connected to SAVJ backend. Tasks are now loaded from the server.');
+      } catch (error) { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not restore your SAVJ session.'); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskLocation, setTaskLocation] = useState('Pune, Maharashtra');
   const [taskBudget, setTaskBudget] = useState('500');
   const [taskDescription, setTaskDescription] = useState('');
   const [notice, setNotice] = useState('');
+  const [apiUser, setApiUser] = useState<ApiUser | null>(null);
+  const [apiEmail, setApiEmail] = useState('');
+  const [apiPassword, setApiPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [apiBusy, setApiBusy] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(false);
 
   const filteredTasks = useMemo(() => tasks.filter((task) =>
     task.distance <= radius &&
@@ -71,12 +98,36 @@ export default function App() {
   const navigate = (page: string) => { setActivePage(page); setNotice(''); };
   const joinDrive = (title: string) => {
     setJoinedDrives((current) => current.includes(title) ? current : [...current, title]);
-    setNotice('You joined this drive in the local demo. This participation is saved only in this browser.');
+    setNotice(backendConnected ? 'Community drive participation must be joined from a live drive record.' : 'You joined this drive in the local demo. This participation is saved only in this browser.');
   };
-  const postTask = (event: React.FormEvent<HTMLFormElement>) => {
+  const signInOrRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setApiBusy(true);
+    try {
+      const result = authMode === 'register'
+        ? await savjApi.register({ email: apiEmail.trim(), password: apiPassword, display_name: profileName.trim() || apiEmail.split('@')[0], locality: profileArea.trim() || 'Pune, Maharashtra', purpose: purpose === 'Volunteer' ? 'Both' : purpose, skills: onboardingSkills })
+        : await savjApi.login(apiEmail.trim(), apiPassword);
+      setApiUser(result.user); setProfileName(result.user.display_name); setProfileArea(result.user.locality); setPurpose(result.user.purpose); setBackendConnected(true);
+      const serverTasks = await savjApi.listTasks(); setTasks(serverTasks.map(fromApiTask));
+      setApiPassword(''); setNotice('Signed in. SAVJ tasks are synced with the backend database.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Authentication failed.'); }
+    finally { setApiBusy(false); }
+  };
+  const signOut = () => { clearAccessToken(); setApiUser(null); setBackendConnected(false); setTasks(createBrowserTaskRepository().list().length ? createBrowserTaskRepository().list() : initialTasks); setNotice('Signed out. You are viewing the local demo again.'); };
+  const postTask = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
     if (!validation.valid) { setNotice(Object.values(validation.errors).filter(Boolean).join(' ')); return; }
+    if (backendConnected) {
+      setApiBusy(true);
+      try {
+        const created = await savjApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim(), category: 'Community cleanup', location_text: taskLocation.trim(), budget_rupees: validation.budget });
+        const newTask = fromApiTask(created);
+        setTasks((current) => [newTask, ...current]); setShowPostModal(false); setActivePage('Explore'); setSearch('');
+        setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setNotice('Task posted to the SAVJ backend.');
+      } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not post task.'); }
+      finally { setApiBusy(false); }
+      return;
+    }
     const newTask: Task = createBrowserTaskRepository().create(
       { title: taskTitle, location: taskLocation, budget: validation.budget, description: taskDescription },
       { category: 'Community cleanup', distance: 1.5, date: 'Schedule to be confirmed', skills: ['Community'], status: 'Open', icon: 'leaf' },
@@ -185,7 +236,7 @@ export default function App() {
 
           {activePage === 'Messages' && <SimplePage icon={<MessageCircle size={28} />} title="Your conversations" description="Task-based conversations will live here so requesters and workers can coordinate clearly." action="Explore tasks" onAction={() => navigate('Explore')} />}
           {activePage === 'My impact' && <><section className="welcome-row"><div><div className="eyebrow"><span className="eyebrow-dot" /> EVERY ACTION COUNTS</div><h1>Your impact, in action</h1><p className="subheading">A little progress, repeated, can change a neighbourhood.</p></div></section><section className="stats-grid impact-stats"><StatCard icon={<CheckCircle2 size={19} />} label="Tasks completed" value="Sample" change="Demo data" /><StatCard icon={<Clock3 size={19} />} label="Volunteer hours" value="Sample" change="Demo data" /><StatCard icon={<TreePine size={19} />} label="Trees planted" value="Sample" change="Demo data" /><StatCard icon={<Recycle size={19} />} label="Waste collected" value="Sample" change="Demo data" /></section><div className="section-card achievement-card"><div className="achievement-badge"><Sprout size={32} /></div><div><span className="eyebrow">CURRENT ACHIEVEMENT</span><h2>Achievements</h2><p>Achievements will appear here when verified activity tracking is connected.</p><small>Sample profile · no verified impact recorded</small></div></div><div className="section-card"><div className="section-heading"><div><h3>Your contribution history</h3><p>Recent community activity</p></div></div><p className="demo-disclaimer">Contribution history is not connected to verified task records yet.</p></div></>}
-          {(activePage === 'Settings' || activePage === 'Profile') && <SimplePage icon={<ShieldCheck size={28} />} title={activePage === 'Profile' ? 'Your community profile' : 'Settings & preferences'} description="Profile verification, skills, preferred radius, and account preferences will be configured here in the identity and trust milestone." action="Back to overview" onAction={() => navigate('Overview')} />}
+          {(activePage === 'Settings' || activePage === 'Profile') && (activePage === 'Profile' ? <SimplePage icon={<ShieldCheck size={28} />} title="Your community profile" description={apiUser ? `Signed in as ${apiUser.email}. Your profile is connected to the SAVJ backend.` : "Your profile is currently stored in this browser demo."} action="Back to overview" onAction={() => navigate('Overview')} /> : <section className="section-card" style={{ maxWidth: 680, margin: '0 auto' }}><div className="section-heading"><div><h3>Backend connection</h3><p>Connect this interface to your local SAVJ API.</p></div><span className={backendConnected ? 'status-badge status-completed' : 'status-badge'}>{backendConnected ? 'Connected' : 'Demo mode'}</span></div><p className="subheading">API address: {import.meta.env.VITE_SAVJ_API_URL || 'http://127.0.0.1:8000'}</p>{apiUser ? <><p>Signed in as <strong>{apiUser.display_name}</strong> ({apiUser.email}). Task listings and new tasks use the backend database.</p><button className="secondary-button" onClick={signOut}>Sign out</button></> : <form className="post-modal" style={{ position: 'static', width: '100%', maxWidth: 'none', boxShadow: 'none', padding: 0, marginTop: 20 }} onSubmit={signInOrRegister}><div className="onboarding-options"><button type="button" className={authMode === 'login' ? 'onboarding-choice selected' : 'onboarding-choice'} onClick={() => setAuthMode('login')}>Sign in</button><button type="button" className={authMode === 'register' ? 'onboarding-choice selected' : 'onboarding-choice'} onClick={() => setAuthMode('register')}>Create account</button></div><label>Email<input type="email" required value={apiEmail} onChange={(event) => setApiEmail(event.target.value)} autoComplete="email" /></label><label>Password<input type="password" required minLength={authMode === 'register' ? 10 : 1} maxLength={128} value={apiPassword} onChange={(event) => setApiPassword(event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} /></label><p className="modal-footnote">{authMode === 'register' ? 'Use at least 10 characters. Your password is sent to your configured backend over your local connection.' : 'Sign in to load your server-backed tasks.'}</p><button className="primary-button" type="submit" disabled={apiBusy}>{apiBusy ? 'Connecting…' : authMode === 'register' ? 'Create account' : 'Sign in'} <ArrowRight size={16}/></button></form>}</section>)}
         </div>
       </main>
 
@@ -194,10 +245,10 @@ export default function App() {
       {selectedTask.status==='In progress'&&<div className="proof-fields"><label>Before photo (required)<input type="file" accept="image/*" onChange={(e)=>setBeforeProofName(e.target.files?.[0]?.name||'')}/></label><label>After photo (required)<input type="file" accept="image/*" onChange={(e)=>setAfterProofName(e.target.files?.[0]?.name||'')}/></label><small>Files are not uploaded or stored; this prototype only validates that both were selected.</small></div>}
       <div className="demo-disclaimer"><ShieldCheck size={15}/> Demo task only. Actions update this browser's local state; there is no server, requester notification, verified KYC or real upload.</div>
       <div className="onboarding-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedTask(null)}>Close</button>
-      {selectedTask.status==='Open'&&<button type="button" className="primary-button" onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'Accepted');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task accepted in this browser demo. No requester has been notified.');}}>Accept in demo</button>}
-      {selectedTask.status==='Accepted'&&<button type="button" className="primary-button" onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'In progress');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});}}>Start task (demo)</button>}
-      {selectedTask.status==='In progress'&&<button type="button" className="primary-button" disabled={!beforeProofName||!afterProofName} onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'Awaiting approval');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Both proof files selected. Nothing was uploaded; task awaits demo approval.');}}>Submit proof (demo)</button>}
-      {selectedTask.status==='Awaiting approval'&&<button type="button" className="primary-button" onClick={()=>{const result=transitionTaskStatus(selectedTask.status,'Completed');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Demo task marked complete. No real requester approval was recorded.');}}>Simulate requester approval</button>}
+      {selectedTask.status==='Open'&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'accept'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task accepted by the SAVJ backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not accept task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Accepted');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task accepted in this browser demo. No requester has been notified.');}}>{backendConnected?'Accept task':'Accept in demo'}</button>}
+      {selectedTask.status==='Accepted'&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'start'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task started on the backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not start task.');}return;}const result=transitionTaskStatus(selectedTask.status,'In progress');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});}}>Start task {backendConnected?'':'(demo)'}</button>}
+      {selectedTask.status==='In progress'&&<button type="button" className="primary-button" disabled={!beforeProofName||!afterProofName} onClick={async()=>{if(backendConnected){setNotice('Secure proof uploads are not implemented yet; selected files were not uploaded.');return;}const result=transitionTaskStatus(selectedTask.status,'Awaiting approval');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Both proof files selected. Nothing was uploaded; task awaits demo approval.');}}>Submit proof {backendConnected?'(uploads not ready)':'(demo)'}</button>}
+      {selectedTask.status==='Awaiting approval'&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'approve'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Completion approved by the backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not approve task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Completed');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Demo task marked complete. No real requester approval was recorded.');}}>{backendConnected?'Approve completion':'Simulate requester approval'}</button>}
       </div></section></div>}
       {showPostModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPostModal(false); }}><form className="post-modal" onSubmit={postTask}><div className="modal-heading"><div><span className="eyebrow">START SOMETHING GOOD</span><h2>Post a community task</h2><p>Tell your neighbourhood what needs doing.</p></div><button type="button" className="icon-button" onClick={() => setShowPostModal(false)} aria-label="Close modal"><X size={20} /></button></div><label>Task title<input required value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Clean our society garden" /></label><label>Location<input required value={taskLocation} onChange={(e) => setTaskLocation(e.target.value)} placeholder="Area or neighbourhood" /></label><label>Budget (₹)<input type="number" min="0" value={taskBudget} onChange={(e) => setTaskBudget(e.target.value)} /></label><label>What needs to be done?<textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Add details, expectations, or timing..." rows={3} /></label><div className="modal-footnote"><ShieldCheck size={16} /> Keep task details clear and community-friendly.</div><button className="primary-button submit-task" type="submit"><Plus size={17} /> Publish task to demo feed</button></form></div>}
     </div>
