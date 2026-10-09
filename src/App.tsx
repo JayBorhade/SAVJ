@@ -16,6 +16,7 @@ type Task = {
   id: number; title: string; category: string; location: string; distance: number;
   budget: number; date: string; skills: string[]; status: TaskStatus;
   icon: 'leaf' | 'tree' | 'water' | 'recycle'; description: string;
+  latitude?: number | null; longitude?: number | null;
 };
 
 const initialTasks: Task[] = [
@@ -33,7 +34,14 @@ const drives = [
 function fromApiTask(task: ApiTask): Task {
   const date = task.scheduled_at ? new Date(task.scheduled_at).toLocaleString() : 'Schedule to be confirmed';
   const icon: Task['icon'] = /tree|plant/i.test(task.category + task.title) ? 'tree' : /water|lake/i.test(task.category + task.title) ? 'water' : /recycl|waste/i.test(task.category + task.title) ? 'recycle' : 'leaf';
-  return { id: task.id, title: task.title, category: task.category, location: task.location_text, distance: 0, budget: task.budget_minor_units / 100, date, skills: [], status: task.status, icon, description: task.description };
+  return { id: task.id, title: task.title, category: task.category, location: task.location_text, latitude: task.latitude, longitude: task.longitude, distance: 0, budget: task.budget_minor_units / 100, date, skills: [], status: task.status, icon, description: task.description };
+}
+
+function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (value: number) => value * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
 }
 
 function TaskIcon({ kind }: { kind: Task['icon'] }) {
@@ -59,6 +67,9 @@ export default function App() {
   const [afterProofFile, setAfterProofFile] = useState<File | null>(null);
   const [search, setSearch] = useState('');
   const [radius, setRadius] = useState(5);
+  const [currentCoordinates, setCurrentCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [taskCoordinates, setTaskCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationBusy, setLocationBusy] = useState(false);
   const [category, setCategory] = useState('All tasks');
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -86,6 +97,14 @@ export default function App() {
   const [taskBudget, setTaskBudget] = useState('500');
   const [taskDescription, setTaskDescription] = useState('');
   const [notice, setNotice] = useState('');
+  useEffect(() => {
+    if (!backendConnected || !currentCoordinates) return;
+    let cancelled = false;
+    void savjApi.listTasks({ ...currentCoordinates, radius_km: radius })
+      .then((apiTasks) => { if (!cancelled) setTasks(apiTasks.map(fromApiTask)); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Radius search failed.'); });
+    return () => { cancelled = true; };
+  }, [backendConnected, currentCoordinates, radius]);
   const [apiUser, setApiUser] = useState<ApiUser | null>(null);
   const [apiEmail, setApiEmail] = useState('');
   const [apiPassword, setApiPassword] = useState('');
@@ -93,13 +112,36 @@ export default function App() {
   const [apiBusy, setApiBusy] = useState(false);
   const [backendConnected, setBackendConnected] = useState(false);
 
-  const filteredTasks = useMemo(() => tasks.filter((task) =>
-    task.distance <= radius &&
+  const filteredTasks = useMemo(() => tasks.map((task) => {
+    const distance = currentCoordinates && task.latitude != null && task.longitude != null
+      ? distanceKm(currentCoordinates.latitude, currentCoordinates.longitude, task.latitude, task.longitude)
+      : task.distance;
+    return { ...task, distance };
+  }).filter((task) =>
+    (currentCoordinates ? task.latitude != null && task.longitude != null && task.distance <= radius : task.distance <= radius) &&
     (category === 'All tasks' || task.category === category) &&
     (task.title + task.location + task.category + task.skills.join(' ')).toLowerCase().includes(search.toLowerCase())
-  ), [tasks, radius, category, search]);
+  ), [tasks, radius, category, search, currentCoordinates]);
 
   const navigate = (page: string) => { setActivePage(page); setNotice(''); };
+  const requestCurrentLocation = () => {
+    if (!navigator.geolocation) { setNotice('This browser does not support location services.'); return; }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => { setCurrentCoordinates({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationBusy(false); setNotice('Location enabled. Radius discovery now uses real coordinates where available.'); },
+      () => { setLocationBusy(false); setNotice('Location permission was unavailable. You can still browse tasks by area text.'); },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+  const tagTaskLocation = () => {
+    if (!navigator.geolocation) { setNotice('This browser does not support location services.'); return; }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => { setTaskCoordinates({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationBusy(false); setNotice('Task location tagged with your current coordinates.'); },
+      () => { setLocationBusy(false); setNotice('Could not access location. You can publish the task without coordinates.'); },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  };
   const joinDrive = (title: string) => {
     setJoinedDrives((current) => current.includes(title) ? current : [...current, title]);
     setNotice(backendConnected ? 'Community drive participation must be joined from a live drive record.' : 'You joined this drive in the local demo. This participation is saved only in this browser.');
@@ -124,10 +166,10 @@ export default function App() {
     if (backendConnected) {
       setApiBusy(true);
       try {
-        const created = await savjApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim(), category: 'Community cleanup', location_text: taskLocation.trim(), budget_rupees: validation.budget });
+        const created = await savjApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim(), category: 'Community cleanup', location_text: taskLocation.trim(), budget_rupees: validation.budget, latitude: taskCoordinates?.latitude ?? null, longitude: taskCoordinates?.longitude ?? null });
         const newTask = fromApiTask(created);
         setTasks((current) => [newTask, ...current]); setShowPostModal(false); setActivePage('Explore'); setSearch('');
-        setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setNotice('Task posted to the SAVJ backend.');
+        setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCoordinates(null); setNotice('Task posted to the SAVJ backend.');
       } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not post task.'); }
       finally { setApiBusy(false); }
       return;
@@ -138,7 +180,7 @@ export default function App() {
     );
     setTasks((current) => [newTask, ...current]);
     setShowPostModal(false); setActivePage('Explore'); setSearch('');
-    setTaskTitle(''); setTaskDescription(''); setTaskBudget('500');
+    setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCoordinates(null);
     setNotice('Your task has been added to the local demo feed.');
   };
 
@@ -230,9 +272,9 @@ export default function App() {
 
           {activePage === 'Explore' && (
             <><section className="welcome-row"><div><div className="eyebrow"><span className="eyebrow-dot" /> FIND YOUR NEXT GOOD DEED</div><h1>Explore nearby tasks</h1><p className="subheading">Local opportunities to make a real difference.</p></div><button className="primary-button" onClick={() => setShowPostModal(true)}><Plus size={18} /> Post a task</button></section>
-              <div className="explore-toolbar"><div className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, skills, or locations..." /></div><div className="radius-control"><MapPin size={16} /><span>Within</span><select value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius"><option value={1}>1 km</option><option value={3}>3 km</option><option value={5}>5 km</option><option value={10}>10 km</option><option value={25}>25 km</option></select></div><div className="filter-control"><Filter size={16} /><select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Task category"><option>All tasks</option><option>Community cleanup</option><option>Tree plantation</option><option>Green spaces</option><option>Waterbody cleanup</option></select></div></div>
+              <div className="explore-toolbar"><button className="secondary-button" onClick={requestCurrentLocation} disabled={locationBusy}>{locationBusy ? "Locating…" : currentCoordinates ? "Location enabled ✓" : "Use my location"}</button><div className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, skills, or locations..." /></div><div className="radius-control"><MapPin size={16} /><span>Within</span><select value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius"><option value={1}>1 km</option><option value={3}>3 km</option><option value={5}>5 km</option><option value={10}>10 km</option><option value={25}>25 km</option></select></div><div className="filter-control"><Filter size={16} /><select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Task category"><option>All tasks</option><option>Community cleanup</option><option>Tree plantation</option><option>Green spaces</option><option>Waterbody cleanup</option></select></div></div>
               <div className="explore-layout"><div className="explore-results"><div className="results-caption"><strong>{filteredTasks.length} opportunities</strong><span>Sorted by distance</span></div>{filteredTasks.map((task) => <TaskRow key={task.id} task={task} onOpen={() => setSelectedTask(task)} expanded />)}{filteredTasks.length === 0 && <div className="empty-state"><Leaf size={30} /><strong>No tasks match those filters</strong><p>Try a wider radius or a different search.</p><button className="secondary-button" onClick={() => { setRadius(10); setCategory('All tasks'); setSearch(''); }}>Clear filters</button></div>}</div>
-                <div className="map-panel"><div className="map-header"><strong><MapPin size={16} /> Task map</strong><span>Illustrative preview</span></div><div className="map-canvas"><div className="map-water" /><div className="map-park park-a" /><div className="map-park park-b" /><div className="map-road road-a" /><div className="map-road road-b" /><div className="map-road road-c" /><span className="map-label label-a">AUNDH</span><span className="map-label label-b">BANER</span><span className="map-label label-c">PASHAN LAKE</span>{filteredTasks.slice(0, 4).map((task, i) => <button key={task.id} className={'map-pin pin-' + i} onClick={() => setNotice(task.title + ' · ' + task.distance + ' km away')} aria-label={'Select ' + task.title}><Leaf size={15} /></button>)}<div className="map-home"><MapPin size={18} /></div></div><div className="map-legend"><span><i className="legend-dot" /> Open tasks</span><span><i className="legend-home" /> Your area</span></div><p className="map-note">Map is a visual placeholder. Live geocoding and map tiles will be connected in the integration milestone.</p></div></div>
+                <div className="map-panel"><div className="map-header"><strong><MapPin size={16} /> Task map</strong><span>Illustrative preview</span></div><div className="map-canvas"><div className="map-water" /><div className="map-park park-a" /><div className="map-park park-b" /><div className="map-road road-a" /><div className="map-road road-b" /><div className="map-road road-c" /><span className="map-label label-a">AUNDH</span><span className="map-label label-b">BANER</span><span className="map-label label-c">PASHAN LAKE</span>{filteredTasks.slice(0, 4).map((task, i) => <button key={task.id} className={'map-pin pin-' + i} onClick={() => setNotice(task.title + ' · ' + task.distance + ' km away')} aria-label={'Select ' + task.title}><Leaf size={15} /></button>)}<div className="map-home"><MapPin size={18} /></div></div><div className="map-legend"><span><i className="legend-dot" /> Open tasks</span><span><i className="legend-home" /> Your area</span></div><p className="map-note">{currentCoordinates ? "Radius filtering uses your browser location and coordinates stored on tasks. Tasks without coordinates are omitted from radius results." : "Enable location to calculate real distances. The illustrated map still needs a configured map-tile provider."}</p></div></div>
             </>
           )}
 
@@ -254,7 +296,7 @@ export default function App() {
       {selectedTask.status==='In progress'&&<button type="button" className="primary-button" disabled={!beforeProofName||!afterProofName} onClick={async()=>{if(backendConnected){if(!beforeProofFile||!afterProofFile){setNotice('Choose both before and after images.');return;}try{await savjApi.uploadProof(selectedTask.id,'before',beforeProofFile);await savjApi.uploadProof(selectedTask.id,'after',afterProofFile);const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'submit'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setBeforeProofFile(null);setAfterProofFile(null);setBeforeProofName('');setAfterProofName('');setNotice('Before and after proof images uploaded securely. Task submitted for requester approval.');}catch(error){setNotice(error instanceof Error?error.message:'Could not upload proof images.');}return;}const result=transitionTaskStatus(selectedTask.status,'Awaiting approval');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Both proof files selected. Nothing was uploaded; task awaits demo approval.');}}>Submit proof {backendConnected?'(uploads not ready)':'(demo)'}</button>}
       {selectedTask.status==='Awaiting approval'&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'approve'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Completion approved by the backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not approve task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Completed');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Demo task marked complete. No real requester approval was recorded.');}}>{backendConnected?'Approve completion':'Simulate requester approval'}</button>}
       </div></section></div>}
-      {showPostModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPostModal(false); }}><form className="post-modal" onSubmit={postTask}><div className="modal-heading"><div><span className="eyebrow">START SOMETHING GOOD</span><h2>Post a community task</h2><p>Tell your neighbourhood what needs doing.</p></div><button type="button" className="icon-button" onClick={() => setShowPostModal(false)} aria-label="Close modal"><X size={20} /></button></div><label>Task title<input required value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Clean our society garden" /></label><label>Location<input required value={taskLocation} onChange={(e) => setTaskLocation(e.target.value)} placeholder="Area or neighbourhood" /></label><label>Budget (₹)<input type="number" min="0" value={taskBudget} onChange={(e) => setTaskBudget(e.target.value)} /></label><label>What needs to be done?<textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Add details, expectations, or timing..." rows={3} /></label><div className="modal-footnote"><ShieldCheck size={16} /> Keep task details clear and community-friendly.</div><button className="primary-button submit-task" type="submit"><Plus size={17} /> Publish task to demo feed</button></form></div>}
+      {showPostModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPostModal(false); }}><form className="post-modal" onSubmit={postTask}><div className="modal-heading"><div><span className="eyebrow">START SOMETHING GOOD</span><h2>Post a community task</h2><p>Tell your neighbourhood what needs doing.</p></div><button type="button" className="icon-button" onClick={() => setShowPostModal(false)} aria-label="Close modal"><X size={20} /></button></div><label>Task title<input required value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Clean our society garden" /></label><label>Location<input required value={taskLocation} onChange={(e) => setTaskLocation(e.target.value)} placeholder="Area or neighbourhood" /></label><label>Budget (₹)<input type="number" min="0" value={taskBudget} onChange={(e) => setTaskBudget(e.target.value)} /></label><button type="button" className="secondary-button" onClick={tagTaskLocation} disabled={locationBusy}>{taskCoordinates ? "Task location tagged ✓" : "Tag task at my current location"}</button><p className="modal-footnote">Coordinates are optional and only attached when you explicitly tag this task.</p><label>What needs to be done?<textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Add details, expectations, or timing..." rows={3} /></label><div className="modal-footnote"><ShieldCheck size={16} /> Keep task details clear and community-friendly.</div><button className="primary-button submit-task" type="submit"><Plus size={17} /> Publish task to demo feed</button></form></div>}
     </div>
   );
 }
