@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowRight, Bell, CalendarDays, CheckCircle2,
-  ChevronDown, CircleHelp, Compass, Filter, Flower2, HandHeart, Heart,
-  Leaf, MapPin, Menu, MessageCircle, Plus, Search, Settings2, ShieldCheck,
-  Sprout, TreePine, Users, Wallet, X, Clock3, Recycle, Waves, Wind
+  ChevronDown, Compass, Filter, Flower2, HandHeart,
+  Leaf, MapPin, MessageCircle, Plus, Search, Settings2, ShieldCheck,
+  Sprout, TreePine, Users, X, Clock3, Recycle, Waves, Wind
 } from 'lucide-react';
 import './App.css';
 import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
