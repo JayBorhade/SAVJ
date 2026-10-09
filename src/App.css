@@ -36,3 +36,9 @@
 .task-detail-meta span{display:flex;align-items:center;gap:5px}
 .task-detail-meta strong{margin-left:auto;color:#254c34;font-size:15px}
 @media(max-width:520px){.onboarding-modal{padding:22px 18px}.onboarding-options{grid-template-columns:1fr}.task-detail-meta strong{margin-left:0}}
+
+.proof-fields{display:grid;gap:12px;margin:18px 0;padding:14px;background:#f5f8f2;border:1px solid #e1e9dc;border-radius:10px}
+.proof-fields label{display:grid;gap:7px;color:#405a45;font-size:12px;font-weight:700}
+.proof-fields input{max-width:100%;font-size:12px}
+.proof-fields small{color:#7a887c;font-size:10px;line-height:1.5}
+button:disabled{opacity:.45;cursor:not-allowed}
