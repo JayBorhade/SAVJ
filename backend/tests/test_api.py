@@ -123,6 +123,7 @@ def test_radius_discovery_uses_task_coordinates():
 
 def test_worker_directory_filters_skills_without_exposing_email():
     worker_token, worker = register("publicworker@example.com", "Garden Helper", purpose="Worker")
+    assert client.patch("/api/v1/me", headers=auth(worker_token), json={"skills": ["Gardening", "Cleanup"]}).status_code == 200
     requester_token, _ = register("private.requester@example.com", "Task Requester", purpose="Requester")
     all_workers = client.get("/api/v1/workers", headers=auth(requester_token))
     assert all_workers.status_code == 200, all_workers.text
