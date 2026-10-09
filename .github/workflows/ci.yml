@@ -2,7 +2,7 @@ name: SAVJ CI
 
 on:
   push:
-    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration, phase-5/live-community-messaging, phase-6/secure-proof-uploads, phase-7/migrations-and-runtime-hardening, phase-8/geospatial-discovery]
+    branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration, phase-5/live-community-messaging, phase-6/secure-proof-uploads, phase-7/migrations-and-runtime-hardening, phase-8/geospatial-discovery, phase-9/live-impact-profile]
   pull_request:
     branches: [main, phase-1/stabilize-and-flows, phase-2/domain-and-validation, phase-3/backend-database, phase-4/frontend-api-integration]
 
