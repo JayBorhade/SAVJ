@@ -18,7 +18,6 @@ from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreat
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 
 settings = get_settings()
-Base.metadata.create_all(bind=engine)
 app = FastAPI(title="SAVJ API", version="0.1.0", description="Authenticated API for the SAVJ environmental community platform.")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["GET", "POST", "PATCH", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "If-Match"])
 bearer = HTTPBearer(auto_error=False)
