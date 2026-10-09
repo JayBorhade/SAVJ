@@ -1,7 +1,11 @@
 import json
+import os
+from pathlib import Path
+from uuid import uuid4
 from datetime import datetime, timezone
 from typing import Annotated
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, select
@@ -9,8 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CommunityDrive, DriveParticipation, ImpactEvent, Message, Task, User
-from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreate, TaskOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate
+from .models import CommunityDrive, DriveParticipation, ImpactEvent, Message, Task, TaskProof, User
+from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 
 settings = get_settings()
@@ -198,3 +202,81 @@ def send_message(task_id: int, payload: MessageCreate, user: CurrentUser, db: Da
     db.commit()
     db.refresh(message)
     return message
+
+
+# Files are stored outside the static frontend tree and are only served through
+# authenticated, task-participant-authorized endpoints.
+UPLOAD_DIR = Path(os.environ.get("SAVJ_UPLOAD_DIR", "private_uploads")).resolve()
+MAX_PROOF_BYTES = 8 * 1024 * 1024
+_ALLOWED_PROOF_TYPES = {
+    "jpeg": ("image/jpeg", b"\\xff\\xd8\\xff"),
+    "png": ("image/png", b"\\x89PNG\\r\\n\\x1a\\n"),
+    "webp": ("image/webp", b"RIFF"),
+}
+
+def _inspect_image(data: bytes) -> tuple[str, str]:
+    if data.startswith(b"\\xff\\xd8\\xff"):
+        return "image/jpeg", ".jpg"
+    if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        return "image/png", ".png"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp", ".webp"
+    raise HTTPException(status_code=415, detail="Upload a valid JPEG, PNG, or WebP image.")
+
+@app.post("/api/v1/tasks/{task_id}/proofs/{proof_kind}", response_model=TaskProofOut, status_code=201)
+async def upload_task_proof(
+    task_id: int,
+    proof_kind: str,
+    user: CurrentUser,
+    db: Database,
+    file: UploadFile = File(...),
+) -> TaskProof:
+    if proof_kind not in {"before", "after"}:
+        raise HTTPException(status_code=422, detail="Proof type must be 'before' or 'after'.")
+    task = task_access(db, task_id, user.id)
+    if task.worker_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the assigned worker can upload proof.")
+    if task.status != "In progress":
+        raise HTTPException(status_code=409, detail="Proof can only be uploaded while the task is in progress.")
+    data = await file.read(MAX_PROOF_BYTES + 1)
+    await file.close()
+    if not data:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if len(data) > MAX_PROOF_BYTES:
+        raise HTTPException(status_code=413, detail="Proof images must be 8 MB or smaller.")
+    content_type, extension = _inspect_image(data)
+    safe_original_name = Path(file.filename or "proof-image").name.replace("\\x00", "")[:255] or "proof-image"
+    storage_name = f"{uuid4().hex}{extension}"
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    destination = (UPLOAD_DIR / storage_name).resolve()
+    if destination.parent != UPLOAD_DIR:
+        raise HTTPException(status_code=400, detail="Invalid upload path.")
+    destination.write_bytes(data)
+    proof = TaskProof(task_id=task.id, uploader_id=user.id, proof_kind=proof_kind,
+                      original_name=safe_original_name, storage_name=storage_name,
+                      content_type=content_type, size_bytes=len(data))
+    db.add(proof)
+    try:
+        db.commit()
+        db.refresh(proof)
+    except Exception:
+        db.rollback()
+        destination.unlink(missing_ok=True)
+        raise
+    return proof
+
+@app.get("/api/v1/tasks/{task_id}/proofs", response_model=list[TaskProofOut])
+def list_task_proofs(task_id: int, user: CurrentUser, db: Database) -> list[TaskProof]:
+    task_access(db, task_id, user.id)
+    return list(db.scalars(select(TaskProof).where(TaskProof.task_id == task_id).order_by(TaskProof.created_at)).all())
+
+@app.get("/api/v1/proofs/{proof_id}/content")
+def download_task_proof(proof_id: int, user: CurrentUser, db: Database) -> FileResponse:
+    proof = db.get(TaskProof, proof_id)
+    if not proof:
+        raise HTTPException(status_code=404, detail="Proof image not found.")
+    task_access(db, proof.task_id, user.id)
+    path = (UPLOAD_DIR / proof.storage_name).resolve()
+    if path.parent != UPLOAD_DIR or not path.is_file():
+        raise HTTPException(status_code=404, detail="Proof image is unavailable.")
+    return FileResponse(path, media_type=proof.content_type, filename=proof.original_name, content_disposition_type="inline")

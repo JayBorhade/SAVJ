@@ -53,7 +53,7 @@ function saveAccessToken(token: string): void {
 
 async function request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set('Content-Type', 'application/json');
+  if (!(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   if (authenticated) {
     const token = getAccessToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -103,6 +103,12 @@ export const savjApi = {
   sendMessage: (taskId: number, body: string) =>
     request<ApiMessage>(`/api/v1/tasks/${taskId}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
   myImpact: () => request<{ verified_completed_tasks: number; community_drives_joined: number }>('/api/v1/me/impact'),
+  uploadProof: (taskId: number, kind: 'before' | 'after', file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<ApiTaskProof>(`/api/v1/tasks/${taskId}/proofs/${kind}`, { method: 'POST', body: form });
+  },
+  listProofs: (taskId: number) => request<ApiTaskProof[]>(`/api/v1/tasks/${taskId}/proofs`),
 };
 
 export type ApiDrive = {
@@ -110,3 +116,4 @@ export type ApiDrive = {
   starts_at: string; capacity: number | null; status: string; participant_count: number;
 };
 export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
+export type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
