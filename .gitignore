@@ -12,3 +12,7 @@ out/
 Thumbs.db
 .vscode/
 .idea/
+
+# Private task proof uploads (never commit user images)
+private_uploads/
+backend/private_uploads/
