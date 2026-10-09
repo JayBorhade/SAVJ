@@ -52,7 +52,7 @@ export default function App() {
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('savj.joinedDrives') || '[]') as string[]; } catch { return []; } });
-  useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { setNotice('Unable to save demo tasks in this browser. Check storage availability.'); } }, [tasks]);
+  useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { /* Browser storage may be disabled; the UI remains usable for this session. */ } }, [tasks]);
   useEffect(() => { localStorage.setItem('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
   useEffect(() => { if (profileName.trim()) localStorage.setItem('savj.profileName', profileName.trim()); }, [profileName]);
   useEffect(() => { if (profileArea.trim()) localStorage.setItem('savj.profileArea', profileArea.trim()); }, [profileArea]);
