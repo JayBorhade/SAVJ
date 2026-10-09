@@ -122,3 +122,11 @@ class TaskProofOut(BaseModel):
     size_bytes: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class WorkerOut(BaseModel):
+    id: int
+    display_name: str
+    locality: str
+    purpose: str
+    skills: list[str]
+    created_at: datetime
