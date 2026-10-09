@@ -1,6 +1,6 @@
 # SAVJ Phase 2 — Domain and Data Foundation
 
-Status: **Implementation batch committed; CI verification pending**  
+Status: **Implementation committed; automated verification in progress**  
 Working branch: `phase-2/domain-and-validation`  
 Base: `phase-1/stabilize-and-flows`
 
@@ -11,6 +11,7 @@ Base: `phase-1/stabilize-and-flows`
 - Existing task-posting and task-detail actions now call the shared domain rules.
 - A `TaskRepository` contract and browser-local-storage adapter, with task load/save/create routed through that boundary.
 - Automated Node test cases for allowed transitions, rejected jumps, terminal states, cancellation, valid budgets and invalid drafts.
+- Repository adapter tests for empty storage, task record round-tripping, malformed JSON handling and default descriptions.
 - CI steps for automated tests, typecheck, lint and production build.
 - Provider-neutral API/data contract covering users, tasks, task requirements, proof metadata, community drives, participation, messages and impact events.
 
@@ -29,7 +30,7 @@ These are domain/UI rules only. They do not provide security until the API enfor
 - [x] Shared domain rules are imported by the app.
 - [x] Task form uses shared validation.
 - [x] Demo task persistence uses the repository adapter.
-- [x] Automated tests are included in the repository.
+- [x] Automated domain and repository-adapter tests are included in the repository.
 - [x] CI configuration includes test, typecheck, lint and build steps.
 - [x] API and data contract is documented.
 - [ ] GitHub Actions reports passing test, typecheck, lint and build jobs.
