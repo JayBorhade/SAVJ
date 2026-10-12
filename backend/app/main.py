@@ -360,11 +360,16 @@ async def upload_task_proof(
         raise HTTPException(status_code=413, detail="Sanitized proof images must be 8 MB or smaller.")
     safe_original_name = Path(file.filename or "proof-image").name.replace("\x00", "")[:255] or "proof-image"
     storage_name = f"{uuid4().hex}{extension}"
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     destination = (UPLOAD_DIR / storage_name).resolve()
     if destination.parent != UPLOAD_DIR:
         raise HTTPException(status_code=400, detail="Invalid upload path.")
     destination.write_bytes(data)
+    try:
+        os.chmod(destination, 0o600)
+    except OSError:
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="Private proof storage permissions could not be secured.") from None
     proof = TaskProof(task_id=task.id, uploader_id=user.id, proof_kind=proof_kind,
                       original_name=safe_original_name, storage_name=storage_name,
                       content_type=content_type, size_bytes=len(data))
