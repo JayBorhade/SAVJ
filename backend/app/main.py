@@ -3,12 +3,15 @@ import os
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
+from io import BytesIO
+import warnings
 import threading
 import time
 from math import asin, cos, radians, sin, sqrt
 from typing import Annotated
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
+from PIL import Image, UnidentifiedImageError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, select
@@ -291,14 +294,41 @@ _ALLOWED_PROOF_TYPES = {
     "webp": ("image/webp", b"RIFF"),
 }
 
-def _inspect_image(data: bytes) -> tuple[str, str]:
+def _inspect_image(data: bytes) -> tuple[str, str, bytes]:
     if data.startswith(b"\xff\xd8\xff"):
-        return "image/jpeg", ".jpg"
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png", ".png"
-    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return "image/webp", ".webp"
-    raise HTTPException(status_code=415, detail="Upload a valid JPEG, PNG, or WebP image.")
+        expected, content_type, extension = "JPEG", "image/jpeg", ".jpg"
+    elif data.startswith(b"\x89PNG\r\n\x1a\n"):
+        expected, content_type, extension = "PNG", "image/png", ".png"
+    elif len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        expected, content_type, extension = "WEBP", "image/webp", ".webp"
+    else:
+        raise HTTPException(status_code=415, detail="Upload a valid JPEG, PNG, or WebP image.")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(data)) as image:
+                if image.format != expected or getattr(image, "n_frames", 1) != 1:
+                    raise HTTPException(status_code=415, detail="Unsupported or mismatched image content.")
+                width, height = image.size
+                if width < 1 or height < 1 or width * height > 40_000_000:
+                    raise HTTPException(status_code=413, detail="Image dimensions exceed the supported limit.")
+                image.load()
+                clean = image.convert("RGB") if expected == "JPEG" else image.copy()
+                output = BytesIO()
+                options = {"format": expected}
+                if expected == "JPEG":
+                    options.update({"quality": 90, "optimize": True})
+                elif expected == "PNG":
+                    options.update({"optimize": True})
+                else:
+                    options.update({"quality": 90, "method": 4})
+                clean.save(output, **options)
+                clean.close()
+                return content_type, extension, output.getvalue()
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise HTTPException(status_code=415, detail="The uploaded file is not a valid supported image.") from None
 
 @app.post("/api/v1/tasks/{task_id}/proofs/{proof_kind}", response_model=TaskProofOut, status_code=201)
 async def upload_task_proof(
@@ -321,7 +351,7 @@ async def upload_task_proof(
         raise HTTPException(status_code=400, detail="The uploaded file is empty.")
     if len(data) > MAX_PROOF_BYTES:
         raise HTTPException(status_code=413, detail="Proof images must be 8 MB or smaller.")
-    content_type, extension = _inspect_image(data)
+    content_type, extension, data = _inspect_image(data)
     safe_original_name = Path(file.filename or "proof-image").name.replace("\\x00", "")[:255] or "proof-image"
     storage_name = f"{uuid4().hex}{extension}"
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
