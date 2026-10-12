@@ -64,6 +64,11 @@ async def limit_auth_attempts(request: Request, call_next):
                 for old_key, values in list(_auth_attempts.items()):
                     if not values or values[-1] <= cutoff:
                         _auth_attempts.pop(old_key, None)
+                overflow = len(_auth_attempts) - 10000
+                if overflow > 0:
+                    oldest = sorted(_auth_attempts.items(), key=lambda item: item[1][-1] if item[1] else 0)
+                    for old_key, _ in oldest[:overflow]:
+                        _auth_attempts.pop(old_key, None)
     return await call_next(request)
 
 bearer = HTTPBearer(auto_error=False)
