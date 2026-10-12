@@ -21,6 +21,19 @@ from .security import create_access_token, decode_access_token, hash_password, v
 settings = get_settings()
 app = FastAPI(title="SAVJ API", version="0.1.0", description="Authenticated API for the SAVJ environmental community platform.")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["GET", "POST", "PATCH", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "If-Match"])
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """Set conservative browser security headers on API responses."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+    if settings.app_env.lower() in {"production", "prod"}:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 bearer = HTTPBearer(auto_error=False)
 
 def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)], db: Annotated[Session, Depends(get_db)]) -> User:
