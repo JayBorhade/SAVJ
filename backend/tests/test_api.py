@@ -94,6 +94,10 @@ def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypa
     invalid = client.post(f"/api/v1/tasks/{task_id}/proofs/after", headers=auth(worker_token),
                           files={"file": ("fake.png", b"not an image", "image/png")})
     assert invalid.status_code == 415
+    fake_png = b"\\x89PNG\\r\\n\\x1a\\n" + b"not a decodable image"
+    malformed = client.post(f"/api/v1/tasks/{task_id}/proofs/after", headers=auth(worker_token),
+                            files={"file": ("fake.png", fake_png, "image/png")})
+    assert malformed.status_code == 415
     assert client.post(f"/api/v1/tasks/{task_id}/proofs/unknown", headers=auth(worker_token),
                        files={"file": ("before.png", image_bytes, "image/png")}).status_code == 422
 
@@ -136,3 +140,25 @@ def test_worker_directory_filters_skills_without_exposing_email():
     assert "email" not in matching[0]
     assert client.get("/api/v1/workers", headers=auth(requester_token), params={"skill": "garden"}).json()[0]["id"] == worker["id"]
     assert client.get("/api/v1/workers", headers=auth(requester_token), params={"search": "Task Requester"}).json() == []
+
+
+def test_login_rate_limit_returns_429():
+    from app import main as main_module
+
+    original_env = main_module.settings.app_env
+    main_module.settings.app_env = "development"
+    main_module._auth_attempts.clear()
+    try:
+        for _ in range(10):
+            response = client.post("/api/v1/auth/login", json={
+                "email": "not-present@example.com", "password": "wrong-password"
+            })
+            assert response.status_code == 401
+        limited = client.post("/api/v1/auth/login", json={
+            "email": "not-present@example.com", "password": "wrong-password"
+        })
+        assert limited.status_code == 429
+        assert "retry-after" in limited.headers
+    finally:
+        main_module._auth_attempts.clear()
+        main_module.settings.app_env = original_env
