@@ -60,3 +60,14 @@ def test_access_token_rejects_wrong_algorithm_even_with_valid_signature(monkeypa
     signature = security._b64(security.hmac.new(settings.jwt_secret.encode(), unsigned.encode(), security.hashlib.sha256).digest())
     with pytest.raises(HTTPException):
         decode_access_token(unsigned + "." + signature)
+
+
+def test_api_responses_include_security_headers():
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    response = TestClient(app).get("/health")
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
