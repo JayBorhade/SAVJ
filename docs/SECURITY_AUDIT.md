@@ -15,9 +15,9 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 | 1 | SQL injection | Database access reviewed uses SQLAlchemy expressions; no raw SQL injection sink identified in inspected routes. | Continue SAST and test every dynamic query. |
 | 2 | XSS | API schemas constrain lengths, but frontend rendering and browser-level payload tests were not executed. | Verify React escaping; prohibit unsafe HTML sinks and test stored payloads. |
 | 3 | CSRF | API uses bearer authorization; no cookie session was identified in reviewed API. | If cookie auth is introduced, add CSRF tokens and SameSite/Origin checks. |
-| 4 | File uploads | Proof uploads are participant-authorized, capped at 8 MiB, checked by file signatures, and stored outside frontend static assets. Malware scanning and image decoding/re-encoding are absent. | Add image decoder/re-encode, malware scanning, quotas, and private object storage before public launch. |
+| 4 | File uploads | Proof uploads are participant-authorized, capped at 8 MiB before decoding, validated with Pillow, limited to single-frame images and 40 MP, re-encoded to strip ancillary metadata, and stored outside frontend static assets. Malware scanning and private object storage are absent. | Add image decoder/re-encode, malware scanning, quotas, and private object storage before public launch. |
 | 5 | IDOR / BOLA | Task messages and proof endpoints check task participation; task detail is available to any authenticated user by design. | Add regression tests for every object endpoint and confirm task visibility policy. |
-| 6 | Rate limiting | No application-level rate limiting was found in the reviewed routes. | Add shared-store limits for login/register, uploads, messages, and other costly routes before public launch. |
+| 6 | Rate limiting | In-process login/register rate limiting is implemented (10 login or 5 registration attempts per IP per 60 seconds); it resets on restart and is not shared across workers. | Add shared-store limits at the ingress/API gateway for all instances, plus quotas for uploads/messages and other costly routes before public launch. |
 | 7 | JWT secrets | Production config rejects short/default secrets and SQLite. Token decoder verifies HMAC and expiry, but does not fully validate JWT header/claim shape. | Harden token parsing and test malformed/tampered tokens. |
 | 8 | Exposed API secrets | No live secrets were intentionally added by this audit. Repository-wide secret scanning is added in CI. | Rotate any exposed credential immediately; keep deployment secrets in a secret manager. |
 | 9 | Password hashing | PBKDF2-HMAC-SHA256 uses 310,000 iterations and a random salt. | Keep the work factor current and add password-hash regression tests. |
@@ -37,7 +37,7 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 
 - [ ] Resolve the stacked PR dependency / phase-2 conflict and integrate the intended backend before applying the audit to the default branch.
 - [ ] Run backend tests, frontend lint/typecheck/build, dependency audits, CodeQL, and secret scanning on the final merged tree.
-- [ ] Add rate limiting and security regression tests.
+- [ ] Configure shared/distributed gateway rate limiting for all instances and add tests for limits, uploads, and cross-account authorization.
 - [ ] Add MFA/account recovery and email verification only with a defined provider and secure token lifecycle.
 - [ ] Verify proof-upload malware handling, private storage permissions, retention, and deletion.
 - [ ] Test authorization using multiple accounts and direct API requests.
