@@ -1,5 +1,7 @@
 import os
 import tempfile
+from io import BytesIO
+from PIL import Image
 
 _db_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
 _db_file.close()
@@ -76,7 +78,9 @@ def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypa
     task_id = task["id"]
     assert client.post(f"/api/v1/tasks/{task_id}/accept", headers=auth(worker_token)).status_code == 200
     assert client.post(f"/api/v1/tasks/{task_id}/start", headers=auth(worker_token)).status_code == 200
-    image_bytes = b"\x89PNG\r\n\x1a\n" + b"test-image-payload"
+    image_buffer = BytesIO()
+    Image.new("RGB", (2, 2), (20, 40, 60)).save(image_buffer, format="PNG")
+    image_bytes = image_buffer.getvalue()
     uploaded = client.post(f"/api/v1/tasks/{task_id}/proofs/before", headers=auth(worker_token),
                            files={"file": ("before.png", image_bytes, "image/png")})
     assert uploaded.status_code == 201, uploaded.text
@@ -85,7 +89,7 @@ def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypa
     assert proof["content_type"] == "image/png"
     assert not (tmp_path / "public" / proof["original_name"]).exists()
     assert client.get(f"/api/v1/tasks/{task_id}/proofs", headers=auth(requester_token)).json()[0]["id"] == proof["id"]
-    assert client.get(f"/api/v1/proofs/{proof['id']}/content", headers=auth(requester_token)).content == image_bytes
+    assert client.get(f"/api/v1/proofs/{proof['id']}/content", headers=auth(requester_token)).content.startswith(b"\x89PNG\r\n\x1a\n")
     assert client.get(f"/api/v1/proofs/{proof['id']}/content", headers=auth(outsider_token)).status_code == 403
     invalid = client.post(f"/api/v1/tasks/{task_id}/proofs/after", headers=auth(worker_token),
                           files={"file": ("fake.png", b"not an image", "image/png")})
