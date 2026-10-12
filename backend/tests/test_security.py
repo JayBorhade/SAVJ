@@ -69,3 +69,17 @@ def test_api_responses_include_security_headers():
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert response.headers["referrer-policy"] == "no-referrer"
+
+
+def test_production_config_rejects_placeholder_secrets_and_http_cors():
+    from app.config import Settings
+
+    common = {
+        "app_env": "production",
+        "database_url": "postgresql+psycopg://savj:password@db.example.com/savj",
+        "cors_origins": "https://app.example.com",
+    }
+    with pytest.raises(RuntimeError, match="JWT_SECRET"):
+        Settings(**common, jwt_secret="change_me_" + "x" * 40).validate_runtime()
+    with pytest.raises(RuntimeError, match="HTTPS origins"):
+        Settings(**{**common, "cors_origins": "http://app.example.com"}, jwt_secret="R" * 48).validate_runtime()
