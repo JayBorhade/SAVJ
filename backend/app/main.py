@@ -256,15 +256,15 @@ def send_message(task_id: int, payload: MessageCreate, user: CurrentUser, db: Da
 UPLOAD_DIR = Path(os.environ.get("SAVJ_UPLOAD_DIR", "private_uploads")).resolve()
 MAX_PROOF_BYTES = 8 * 1024 * 1024
 _ALLOWED_PROOF_TYPES = {
-    "jpeg": ("image/jpeg", b"\\xff\\xd8\\xff"),
-    "png": ("image/png", b"\\x89PNG\\r\\n\\x1a\\n"),
+    "jpeg": ("image/jpeg", b"\xff\xd8\xff"),
+    "png": ("image/png", b"\x89PNG\r\n\x1a\n"),
     "webp": ("image/webp", b"RIFF"),
 }
 
 def _inspect_image(data: bytes) -> tuple[str, str]:
-    if data.startswith(b"\\xff\\xd8\\xff"):
+    if data.startswith(b"\xff\xd8\xff"):
         return "image/jpeg", ".jpg"
-    if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
         return "image/png", ".png"
     if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
         return "image/webp", ".webp"
