@@ -23,7 +23,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - name: Audit frontend dependencies
         run: |
           if [ -f package-lock.json ]; then
