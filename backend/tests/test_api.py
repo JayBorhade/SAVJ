@@ -94,7 +94,7 @@ def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypa
     invalid = client.post(f"/api/v1/tasks/{task_id}/proofs/after", headers=auth(worker_token),
                           files={"file": ("fake.png", b"not an image", "image/png")})
     assert invalid.status_code == 415
-    fake_png = b"\\x89PNG\\r\\n\\x1a\\n" + b"not a decodable image"
+    fake_png = b"\x89PNG\r\n\x1a\n" + b"not a decodable image"
     malformed = client.post(f"/api/v1/tasks/{task_id}/proofs/after", headers=auth(worker_token),
                             files={"file": ("fake.png", fake_png, "image/png")})
     assert malformed.status_code == 415
