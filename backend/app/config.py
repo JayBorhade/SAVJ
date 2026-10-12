@@ -1,4 +1,4 @@
-import os
+from urllib.parse import urlsplit
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,16 +19,28 @@ class Settings(BaseSettings):
         if not 5 <= self.access_token_expire_minutes <= 1440:
             raise RuntimeError("ACCESS_TOKEN_EXPIRE_MINUTES must be between 5 and 1440.")
         if self.app_env.lower() in {"production", "prod"}:
-            weak_values = {"change_me", "changeme", "your-secret", "secret"}
-            if len(self.jwt_secret) < 32 or self.jwt_secret.startswith("local-development") or self.jwt_secret.lower() in weak_values:
-                raise RuntimeError("Production requires a unique JWT_SECRET of at least 32 characters.")
+            secret = self.jwt_secret.strip()
+            weak_prefixes = ("local-development", "change_me", "changeme", "your-secret", "secret", "placeholder", "example")
+            if len(secret) < 32 or secret != self.jwt_secret or secret.lower().startswith(weak_prefixes):
+                raise RuntimeError("Production requires a unique, non-placeholder JWT_SECRET of at least 32 characters.")
             if self.database_url.startswith("sqlite"):
                 raise RuntimeError("Production must use PostgreSQL or another managed database, not SQLite.")
             origins = self.cors_origin_list
             if not origins or "*" in origins:
                 raise RuntimeError("Production CORS_ORIGINS must list explicit trusted origins; wildcards are forbidden.")
-            if any(origin.endswith("://") or " " in origin for origin in origins):
-                raise RuntimeError("CORS_ORIGINS contains an invalid origin.")
+            for origin in origins:
+                parsed = urlsplit(origin)
+                if (
+                    parsed.scheme != "https"
+                    or not parsed.hostname
+                    or parsed.path not in {"", "/"}
+                    or parsed.query
+                    or parsed.fragment
+                    or parsed.username
+                    or parsed.password
+                    or " " in origin
+                ):
+                    raise RuntimeError("Production CORS_ORIGINS must contain HTTPS origins without paths, credentials, queries, or fragments.")
         return self
 
 
