@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
+import threading
+import time
 from math import asin, cos, radians, sin, sqrt
 from typing import Annotated
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import func, select
@@ -34,6 +36,32 @@ async def security_headers(request, call_next):
     if settings.app_env.lower() in {"production", "prod"}:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
+# Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
+_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60)}
+_auth_attempts: dict[tuple[str, str], list[float]] = {}
+_auth_attempts_lock = threading.Lock()
+
+@app.middleware("http")
+async def limit_auth_attempts(request: Request, call_next):
+    policy = _AUTH_LIMITS.get(request.url.path)
+    if request.method == "POST" and policy:
+        ip = request.client.host if request.client else "unknown"
+        maximum, window = policy
+        now = time.monotonic()
+        key = (ip, request.url.path)
+        with _auth_attempts_lock:
+            recent = [stamp for stamp in _auth_attempts.get(key, []) if now - stamp < window]
+            if len(recent) >= maximum:
+                return JSONResponse(status_code=429, content={"detail": "Too many authentication attempts. Try again later."}, headers={"Retry-After": str(max(1, int(window - (now - recent[0]))))})
+            recent.append(now)
+            _auth_attempts[key] = recent
+            if len(_auth_attempts) > 10000:
+                cutoff = now - window
+                for old_key, values in list(_auth_attempts.items()):
+                    if not values or values[-1] <= cutoff:
+                        _auth_attempts.pop(old_key, None)
+    return await call_next(request)
+
 bearer = HTTPBearer(auto_error=False)
 
 def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)], db: Annotated[Session, Depends(get_db)]) -> User:
