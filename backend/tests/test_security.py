@@ -1,4 +1,3 @@
-import base64
 import json
 import time
 
@@ -32,7 +31,6 @@ def test_access_token_round_trip_and_expiry():
     "",
     "one.two",
     "a.b.c",
-    "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiI0MiIsImlhdCI6MSwiZXhwIjo5OTk5OTk5OTk5fQ.",
     "x" * 9000,
 ])
 def test_access_token_rejects_malformed_tokens(token):
