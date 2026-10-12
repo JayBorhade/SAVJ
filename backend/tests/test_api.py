@@ -76,7 +76,7 @@ def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypa
     task_id = task["id"]
     assert client.post(f"/api/v1/tasks/{task_id}/accept", headers=auth(worker_token)).status_code == 200
     assert client.post(f"/api/v1/tasks/{task_id}/start", headers=auth(worker_token)).status_code == 200
-    image_bytes = b"\\x89PNG\\r\\n\\x1a\\n" + b"test-image-payload"
+    image_bytes = b"\x89PNG\r\n\x1a\n" + b"test-image-payload"
     uploaded = client.post(f"/api/v1/tasks/{task_id}/proofs/before", headers=auth(worker_token),
                            files={"file": ("before.png", image_bytes, "image/png")})
     assert uploaded.status_code == 201, uploaded.text
