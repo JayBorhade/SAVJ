@@ -1,8 +1,8 @@
 # SAVJ Security Audit & Remediation Register
 
 **Scope reviewed:** `phase-16/launch-hardening` (repository snapshot), not the deployed service.  
-**Review date:** 2026-10-12  
-**Status:** Initial code review; this is not a penetration test or a production security certification.
+**Review date:** 2026-10-13  
+**Status:** Code review plus targeted hardening and regression-test additions; this is not a penetration test or a production security certification.
 
 ## Summary
 
