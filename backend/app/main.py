@@ -43,6 +43,8 @@ _auth_attempts_lock = threading.Lock()
 
 @app.middleware("http")
 async def limit_auth_attempts(request: Request, call_next):
+    if settings.app_env.lower() in {"test", "testing"}:
+        return await call_next(request)
     policy = _AUTH_LIMITS.get(request.url.path)
     if request.method == "POST" and policy:
         ip = request.client.host if request.client else "unknown"
