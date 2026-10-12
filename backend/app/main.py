@@ -35,7 +35,6 @@ async def security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
     if settings.app_env.lower() in {"production", "prod"}:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
@@ -352,7 +351,9 @@ async def upload_task_proof(
     if len(data) > MAX_PROOF_BYTES:
         raise HTTPException(status_code=413, detail="Proof images must be 8 MB or smaller.")
     content_type, extension, data = _inspect_image(data)
-    safe_original_name = Path(file.filename or "proof-image").name.replace("\\x00", "")[:255] or "proof-image"
+    if len(data) > MAX_PROOF_BYTES:
+        raise HTTPException(status_code=413, detail="Sanitized proof images must be 8 MB or smaller.")
+    safe_original_name = Path(file.filename or "proof-image").name.replace("\x00", "")[:255] or "proof-image"
     storage_name = f"{uuid4().hex}{extension}"
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     destination = (UPLOAD_DIR / storage_name).resolve()
