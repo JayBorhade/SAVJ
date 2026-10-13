@@ -241,6 +241,7 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(worker_token)).status_code == 403
     completed = client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token))
     assert completed.status_code == 200 and completed.json()["status"] == "Completed"
+    assert any(n["notification_type"] == "task_completed" for n in client.get("/api/v1/me/notifications",headers=auth(worker_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token)).status_code == 409
     assert client.get("/api/v1/me/impact",headers=auth(worker_token)).json()["verified_completed_tasks"] == 1
     rating_response = client.post(
