@@ -166,6 +166,31 @@ def test_email_verification_and_password_reset_tokens_are_single_use(monkeypatch
     client.cookies.clear()
 
 
+def test_task_acceptance_enforces_required_skills_and_tools():
+    owner_token, _ = register("requirements-owner@example.com", "Requirements Owner")
+    worker_token, worker = register("requirements-worker@example.com", "Requirements Worker", "Worker")
+    response = client.post(
+        "/api/v1/tasks",
+        headers=auth(owner_token),
+        json={"title": "Prepare garden beds", "location_text": "Pune", "budget_rupees": 300,
+              "required_skills": ["Gardening"], "required_tools": ["Shovel"]},
+    )
+    assert response.status_code == 201, response.text
+    task = response.json()
+    assert task["required_skills"] == ["Gardening"]
+    assert task["required_tools"] == ["Shovel"]
+    assert client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(worker_token)).status_code == 409
+    updated = client.patch(
+        "/api/v1/me",
+        headers=auth(worker_token),
+        json={"skills": ["Cleanup", "Gardening"], "tools": ["Shovel"]},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["tools"] == ["Shovel"]
+    accepted = client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(worker_token))
+    assert accepted.status_code == 200, accepted.text
+
+
 def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     from app import main as main_module
     monkeypatch.setattr(main_module, "UPLOAD_DIR", tmp_path / "task-proof-files")
