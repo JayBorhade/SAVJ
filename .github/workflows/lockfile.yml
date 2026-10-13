@@ -19,6 +19,15 @@ jobs:
   lockfile:
     runs-on: ubuntu-latest
     steps:
+      - name: Check whether lockfile is missing
+        id: lockfile-state
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
@@ -29,15 +38,15 @@ jobs:
         with:
           node-version: 20
       - name: Generate deterministic npm lockfile without running package scripts
-        if: ${{ hashFiles('package-lock.json') == '' }}
+        if: ${{ steps.lockfile-state.outputs.missing == 'true' }}
         run: npm install --package-lock-only --ignore-scripts
       - name: Verify lockfile resolves and audit dependencies
-        if: ${{ hashFiles('package-lock.json') == '' }}
+        if: ${{ steps.lockfile-state.outputs.missing == 'true' }}
         run: |
           npm ci --ignore-scripts
           npm audit --audit-level=high
       - name: Commit lockfile if missing
-        if: ${{ hashFiles('package-lock.json') == '' }}
+        if: ${{ steps.lockfile-state.outputs.missing == 'true' }}
         env:
           BRANCH_NAME: ${{ github.ref_name }}
         run: |
