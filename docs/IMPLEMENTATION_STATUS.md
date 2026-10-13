@@ -24,7 +24,7 @@
 - The login/register limiter is process-local defense-in-depth only; it is not a distributed production rate limiter.
 
 ### Database and deployment
-- SQLAlchemy models and Alembic migrations 0001–0007 cover the schema baseline, task coordinates, unique completion impact, token-version revocation, email action tokens, task requirements/tools, and task ratings. Dockerfiles and Docker Compose include PostgreSQL and a persistent private-upload volume.
+- SQLAlchemy models and Alembic migrations 0001–0008 cover the schema baseline, task coordinates, unique completion impact, token-version revocation, email action tokens, task requirements/tools, and task ratings. Dockerfiles and Docker Compose include PostgreSQL and a persistent private-upload volume.
 - Migration downgrade safety needs care: the baseline downgrade drops mapped tables. Never downgrade a database containing user data without a verified backup and reviewed migration plan.
 - No live production hosting, managed storage, monitoring, backup/restore drill, or production provider configuration is verified by this repository review.
 
