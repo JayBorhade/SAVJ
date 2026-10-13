@@ -35,6 +35,53 @@ def test_health_auth_and_duplicate_email():
     assert client.post("/api/v1/auth/login",json={"email":"requester@example.com","password":"test-password-123"}).status_code == 200
     assert client.post("/api/v1/auth/login",json={"email":"requester@example.com","password":"wrong-password"}).status_code == 401
 
+def test_logout_revokes_previous_access_tokens():
+    token, _ = register("logout@example.com", "Logout User")
+    assert client.get("/api/v1/me", headers=auth(token)).status_code == 200
+    response = client.post("/api/v1/auth/logout", headers=auth(token))
+    assert response.status_code == 204
+    assert client.get("/api/v1/me", headers=auth(token)).status_code == 401
+
+
+def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
+    from app import main as main_module
+
+    monkeypatch.setattr(main_module, "_PRODUCTION", True)
+    monkeypatch.setattr(main_module.settings, "app_env", "production")
+    monkeypatch.setattr(main_module.settings, "cors_origins", "https://app.example.com")
+    client.cookies.clear()
+    try:
+        response = client.post(
+            "/api/v1/auth/register",
+            json={"email": "cookie@example.com", "password": "test-password-123",
+                  "display_name": "Cookie User", "locality": "Pune", "purpose": "Both"},
+        )
+        assert response.status_code == 201, response.text
+        assert response.json()["access_token"] is None
+        set_cookie = response.headers.get("set-cookie", "")
+        assert "HttpOnly" in set_cookie and "Secure" in set_cookie and "SameSite=lax" in set_cookie
+        denied = client.post("/api/v1/auth/logout", base_url="https://testserver")
+        assert denied.status_code == 403
+        me = client.get(
+            "/api/v1/me",
+            base_url="https://testserver",
+            headers={"Origin": "https://app.example.com"},
+        )
+        assert me.status_code == 200, me.text
+        logout = client.post(
+            "/api/v1/auth/logout",
+            base_url="https://testserver",
+            headers={"Origin": "https://app.example.com"},
+        )
+        assert logout.status_code == 204
+        assert client.get("/api/v1/me", base_url="https://testserver").status_code == 401
+    finally:
+        client.cookies.clear()
+        monkeypatch.setattr(main_module, "_PRODUCTION", False)
+        monkeypatch.setattr(main_module.settings, "app_env", "test")
+        monkeypatch.setattr(main_module.settings, "cors_origins", "http://localhost:5173,http://127.0.0.1:5173")
+
+
 def test_task_lifecycle_permissions_and_impact():
     requester_token, _ = register("owner@example.com","Owner")
     worker_token, worker = register("worker@example.com","Worker")
