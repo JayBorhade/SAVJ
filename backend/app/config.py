@@ -36,11 +36,6 @@ class Settings(BaseSettings):
                 raise RuntimeError("Production requires a unique, non-placeholder JWT_SECRET of at least 32 characters.")
             if self.database_url.startswith("sqlite"):
                 raise RuntimeError("Production must use PostgreSQL or another managed database, not SQLite.")
-            if not self.smtp_host or not self.smtp_from or not self.public_app_url:
-                raise RuntimeError("Production requires SMTP_HOST, SMTP_FROM, and PUBLIC_APP_URL for email verification and account recovery.")
-            public_url = urlsplit(self.public_app_url)
-            if public_url.scheme != "https" or not public_url.hostname or public_url.username or public_url.password or public_url.query or public_url.fragment:
-                raise RuntimeError("PUBLIC_APP_URL must be an HTTPS URL without credentials, query, or fragment.")
             origins = self.cors_origin_list
             if not origins or "*" in origins:
                 raise RuntimeError("Production CORS_ORIGINS must list explicit trusted origins; wildcards are forbidden.")
@@ -57,6 +52,11 @@ class Settings(BaseSettings):
                     or " " in origin
                 ):
                     raise RuntimeError("Production CORS_ORIGINS must contain HTTPS origins without paths, credentials, queries, or fragments.")
+            if not self.smtp_host or not self.smtp_from or not self.public_app_url:
+                raise RuntimeError("Production requires SMTP_HOST, SMTP_FROM, and PUBLIC_APP_URL for email verification and account recovery.")
+            public_url = urlsplit(self.public_app_url)
+            if public_url.scheme != "https" or not public_url.hostname or public_url.username or public_url.password or public_url.query or public_url.fragment:
+                raise RuntimeError("PUBLIC_APP_URL must be an HTTPS URL without credentials, query, or fragment.")
         return self
 
 
