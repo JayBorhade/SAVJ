@@ -28,7 +28,7 @@ Users can:
 - Post environmental tasks with photos, descriptions, budgets, skills, tools, location, and schedule.
 - Discover nearby tasks using a configurable search radius.
 - Join environmental community drives.
-- Build profiles around skills, task history, contributions, and impact; KYC verification and ratings are not yet live.
+- Build profiles around skills, tool inventory, verified task history, aggregate worker ratings, community medals, and impact; KYC verification is not yet live.
 - Submit before/after completion proof.
 - Communicate through task-based messaging.
 - Track environmental contributions such as volunteer hours, waste collected, and trees planted.
@@ -129,6 +129,7 @@ The integrated full-stack implementation is present on the stacked Phase 1–16 
 - [x] Commit `package-lock.json` and use `npm ci` for frontend CI/container builds
 - [x] Use HttpOnly production access cookies, Origin checks, and server-side logout revocation
 - [x] Add email verification and password recovery with hashed, expiring, single-use tokens and SMTP delivery
+- [x] Enforce task skills/tools, requester ratings, worker rating summaries, and verified-activity community medals
 - [ ] Integrate the full phase stack into `main` in dependency order
 - [ ] Add refresh-token rotation and MFA/managed identity-provider integration
 - [ ] Configure shared rate limiting, production object storage, malware scanning and retention
@@ -150,4 +151,4 @@ SAVJ is being developed as a Community Engagement Project by students of the Art
 
 The complete implementation is organized as stacked branches from `phase-1/stabilize-and-flows` through `phase-16/launch-hardening`, with a documentation-only Phase 17 verification branch and security PR #18 targeting Phase 16. Later-phase backend, database, API integration, task lifecycle, community drives, messaging, proof uploads, geospatial discovery, worker directory, map UI, Docker, and security hardening exist on the phase stack; they are not yet integrated into `main` or deployed.
 
-Important limitations: Phase 2's merge conflict has been resolved in its branch and CI passed, but the stacked phase PRs are still open and the implementation is not yet consolidated into `main`. A committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`. Production builds use HttpOnly access cookies with Origin checks and logout revocation. Email verification/password recovery now use hashed, expiring, single-use tokens and SMTP delivery hooks, but real SMTP credentials and acceptance testing are still required; refresh-token rotation and MFA remain unimplemented. Login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
+Important limitations: Phase 2's merge conflict has been resolved in its branch and CI passed, but the phase stack is still open and not consolidated into `main`. A committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`. Production builds use HttpOnly access cookies with Origin checks and logout revocation. Email verification/password recovery and task ratings/requirements are implemented, but real SMTP delivery must be configured and tested; refresh-token rotation and MFA remain unimplemented. KYC and payments/payouts are not integrated, so paid work must not be advertised as in-app payment processing. Login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
