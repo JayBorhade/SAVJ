@@ -111,6 +111,25 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
         monkeypatch.setattr(main_module.settings, "cors_origins", "http://localhost:5173,http://127.0.0.1:5173")
 
 
+def test_task_creation_rate_limit_returns_429():
+    from app import main as main_module
+
+    token, _ = register("task-limit@example.com", "Task Limit")
+    original_env = main_module.settings.app_env
+    main_module.settings.app_env = "development"
+    main_module._auth_attempts.clear()
+    try:
+        for _ in range(10):
+            response = client.post("/api/v1/tasks", headers=auth(token), json={})
+            assert response.status_code == 422
+        limited = client.post("/api/v1/tasks", headers=auth(token), json={})
+        assert limited.status_code == 429
+        assert "retry-after" in limited.headers
+    finally:
+        main_module._auth_attempts.clear()
+        main_module.settings.app_env = original_env
+
+
 def test_email_verification_and_password_reset_tokens_are_single_use(monkeypatch):
     from app import main as main_module
 
