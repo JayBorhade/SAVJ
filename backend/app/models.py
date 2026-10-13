@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+import json
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Index, true
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
@@ -15,8 +16,25 @@ class User(Base):
     locality: Mapped[str] = mapped_column(String(160), default="Pune, Maharashtra")
     purpose: Mapped[str] = mapped_column(String(24), default="Both")
     skills_json: Mapped[str] = mapped_column(Text, default="[]")
+    tools_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class EmailActionToken(Base):
+    __tablename__ = "email_action_tokens"
+    __table_args__ = (
+        Index("ix_email_action_tokens_user_purpose", "user_id", "purpose"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[str] = mapped_column(String(32), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
 
 class Task(Base):
     __tablename__ = "tasks"
@@ -26,7 +44,10 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text, default="")
     category: Mapped[str] = mapped_column(String(80), default="Community cleanup")
+    required_skills_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
+    required_tools_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
     location_text: Mapped[str] = mapped_column(String(200))
+    private_location_text: Mapped[str | None] = mapped_column(String(300), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     budget_minor_units: Mapped[int] = mapped_column(Integer)
@@ -36,6 +57,22 @@ class Task(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    @property
+    def required_skills(self) -> list[str]:
+        try:
+            value = json.loads(self.required_skills_json or "[]")
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @property
+    def required_tools(self) -> list[str]:
+        try:
+            value = json.loads(self.required_tools_json or "[]")
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
 
 class CommunityDrive(Base):
     __tablename__ = "community_drives"
@@ -76,6 +113,43 @@ class ImpactEvent(Base):
     unit: Mapped[str | None] = mapped_column(String(32), nullable=True)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+class RefreshSession(Base):
+    __tablename__ = "refresh_sessions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    family_id: Mapped[str] = mapped_column(String(64), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_type: Mapped[str] = mapped_column(String(60))
+    title: Mapped[str] = mapped_column(String(140))
+    body: Mapped[str] = mapped_column(String(500), default="")
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    drive_id: Mapped[int | None] = mapped_column(ForeignKey("community_drives.id", ondelete="SET NULL"), nullable=True, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class TaskRating(Base):
+    __tablename__ = "task_ratings"
+    __table_args__ = (UniqueConstraint("task_id", name="uq_task_rating_task"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    requester_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    score: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
 
 class TaskProof(Base):
     __tablename__ = "task_proofs"

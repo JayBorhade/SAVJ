@@ -1,0 +1,5 @@
+title = "SAVJ Gitleaks configuration"
+
+[allowlist]
+description = "Historical synthetic unsigned JWT fixture in a unit test; not a credential. The fixture was removed and equivalent tests now construct malformed tokens dynamically."
+commits = ["e23890333f78e8ba5192e071ac789cc7d8c0dc4a"]

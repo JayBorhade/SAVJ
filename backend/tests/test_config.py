@@ -46,9 +46,28 @@ def test_production_accepts_explicit_secure_configuration():
         jwt_secret="a-unique-production-secret-value-with-more-than-32-chars",
         access_token_expire_minutes=60,
         cors_origins="https://savj.example,https://www.savj.example",
+        smtp_host="smtp.example.com",
+        smtp_port=587,
+        smtp_from="noreply@savj.example",
+        public_app_url="https://savj.example",
     )
     assert settings.validate_runtime() is settings
     assert settings.cors_origin_list == ["https://savj.example", "https://www.savj.example"]
+
+
+def test_production_requires_email_delivery_configuration():
+    settings = Settings(
+        app_env="production",
+        database_url="postgresql+psycopg://user:pass@db:5432/savj",
+        jwt_secret="a-unique-production-secret-value-with-more-than-32-chars",
+        cors_origins="https://savj.example",
+    )
+    try:
+        settings.validate_runtime()
+    except RuntimeError as exc:
+        assert "SMTP_HOST" in str(exc)
+    else:
+        raise AssertionError("Production must require configured email delivery")
 
 
 def test_token_lifetime_must_be_bounded():

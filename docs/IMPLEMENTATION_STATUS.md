@@ -1,74 +1,69 @@
 # SAVJ Implementation Status
 
-Last updated: 2026-10-09
+**Last reviewed:** 2026-10-13  
+**Reviewed branch:** `security/hardening-phase16`  
+**Integration base:** `phase-16/launch-hardening`  
+**Overall status:** Integrated full-stack implementation exists on stacked phase branches; not yet consolidated, deployed, or production-ready.
 
-## Milestone 1 — Frontend foundation
+## Current implementation
 
-Status: **Frontend foundation, Phase 1 build, and Phase 2 checks verified in GitHub Actions**
+### Frontend
+- React + TypeScript + Vite desktop-first SAVJ dashboard with responsive layout.
+- Personalized onboarding, name greeting, locality chip, task feed, search/category/radius controls, task creation, worker directory, community-drive UI, task messaging, impact/profile screens, map UI, and proof-review components.
+- Typed API client connects authentication, profile, task requirements, worker tools/ratings, drive, messaging, impact, proof, email verification, and password recovery routes to FastAPI.
+- Task creation exposes required skills/tools; workers can edit their tool inventory. Worker directory shows aggregate ratings, community medals derive from verified completions and drive participation, and the notification bell loads real task/drive updates.
+- Browser-local demo data remains available when signed out. Some dashboard sample content is illustrative and must not be mistaken for live backend data.
+- Production builds use Secure, HttpOnly, SameSite=Lax access cookies with Origin checks for cookie-authenticated writes; JavaScript does not receive the bearer token. Development retains the local bearer-token flow. Token-version checks revoke previous access tokens on logout; refresh-token rotation is not implemented.
 
-Implemented in the current repository:
-- React + TypeScript application entry point.
-- Forest-green desktop-first dashboard and responsive sidebar.
-- Personalized welcome header and Pune location tag.
-- Overview dashboard with environmental impact cards.
-- Task feed with search, category filter, radius filter, and responsive task list.
-- Illustrative map panel with task markers (not connected to a live map provider).
-- Community drives with join-state interactions.
-- Task-posting modal with field validation; tasks persist in browser local storage (demo only).
-- First-run onboarding for name, area and participation purpose; personalized greeting and location tag.
-- Task-detail modal with demo lifecycle transitions: open → accepted → in progress → awaiting approval → completed.
-- Completion proof gate requiring selection of both before and after image files (demo validation only; files are not uploaded).
-- Demo impact values explicitly labelled as sample data.
-- Impact page with sample achievements and activity history.
-- Messages, profile, and settings placeholder screens.
-- GitHub Actions workflow to install dependencies and run the frontend build.
+### Backend
+- FastAPI + SQLAlchemy API for registration/login/logout, email verification, password recovery, profile, task discovery/lifecycle and requirements, worker directory/ratings, community drives, task messages, user-scoped in-app notifications, impact totals, and private before/after proof images.
+- Passwords use salted PBKDF2-HMAC-SHA256; JWT parsing/signature/claim checks are strict.
+- Production configuration rejects weak placeholder JWT secrets, SQLite, wildcard CORS, and invalid production origins.
+- Proof uploads are size-limited, decoded/re-encoded, constrained by format/frame/pixel limits, and stored outside the frontend's public assets.
+- Task detail and task-list visibility now restrict non-open tasks to the requester and assigned worker. Task acceptance and drive capacity checks use PostgreSQL row locks to reduce concurrent double assignment/overbooking.
+- Auth/email actions, task creation, messaging, proof uploads, ratings, and drive joins have bounded process-local throttles; they are defense-in-depth and not distributed production rate limits.
+- Proof files are created atomically with restrictive file permissions; the storage directory is tightened to mode 0700 and files to 0600.
 
-### Important current limitations
+### Database and deployment
+- SQLAlchemy models and Alembic migrations 0001–0008 cover the schema baseline, task coordinates, unique completion impact, token-version revocation, email action tokens, task requirements/tools, and task ratings. Dockerfiles and Docker Compose include PostgreSQL and a persistent private-upload volume.
+- Migration downgrade safety needs care: the baseline downgrade drops mapped tables. Never downgrade a database containing user data without a verified backup and reviewed migration plan.
+- No live production hosting, managed storage, monitoring, backup/restore drill, or production provider configuration is verified by this repository review.
 
-The current dashboard uses sample data. Tasks, joined drives, and basic onboarding identity persist in browser local storage only; this is not server persistence. Posting a task and joining a drive are demo interactions, not server-backed actions. The map is illustrative; it does not geocode addresses or display live map tiles. Authentication, KYC, worker acceptance rules, task messaging, image upload/storage, payment processing, and a production database are not implemented yet.
+## Verification state
 
-## Next milestones
+- The lockfile-generation workflow successfully ran `npm ci --ignore-scripts` and `npm audit --audit-level=high`; a committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`.
+- The code head `ba3b32cc476d51b2380b7e95edcf1d486827889c` passed frontend tests/typecheck/lint/build, backend migration/API tests, the PostgreSQL migration chain and API smoke test, both container builds, npm/pip audits, CodeQL, and Gitleaks. Subsequent profile-tools UI and documentation updates require checks on the final integration PR head before merge.
+- No live deployment, real SMTP delivery, KYC/payment provider, production storage, browser end-to-end run, staging DAST, or independent penetration test was available in this remote-only pass. These remain explicitly unverified.
 
-### Phase 1 — Stabilization (implementation branch; PR review pending)
-- Initial onboarding and task-detail flow committed to the working branch.
-- Demo impact figures labelled as sample data.
-- Remaining production work: server-side lifecycle/authorization, actual image uploads, profile/skills persistence and accessibility review. The Phase 1 branch build passes; Phase 2 adds domain tests and stricter CI checks.
+## Integration status and critical blocker
 
-### Milestone 2 — Frontend workflows
-- Create a structured task details view and task lifecycle states.
-- Add task photo attachments and before/after proof UI.
-- Add worker profiles, skills, trust indicators, and requirement validation.
-- Improve empty, loading, validation, and error states.
-- Add automated component and workflow tests.
+SAVJ's branches are stacked:
 
-### Milestone 3 — Backend and persistence
-- Select and document the backend framework and database.
-- Define users, tasks, skills, task applications/acceptance, community drives, participation, messages, proof, ratings, and impact models.
-- Add validated REST endpoints and migrations.
-- Replace demo data with API services.
-- Configure authentication and authorization securely.
+`main → phase-1 → phase-2 → phase-3 → phase-4 → phase-5 → phase-6 → phase-7 → phase-8 → phase-9 → phase-10 → phase-11 → phase-12 → phase-13 → phase-14 → phase-15 → phase-16`
 
-### Milestone 4 — Geospatial and trust integrations
-- Integrate a real map/geocoding provider through environment configuration.
-- Apply radius filtering using server-side geospatial queries.
-- Implement KYC states and enforce relevant worker requirements on the server.
-- Add secure image/document storage and upload validation.
+Security PR #18 targets `phase-16/launch-hardening`, not `main`. Phase 17 verification is documentation-only and also targets Phase 16. Phase 2's branch conflict has been resolved with a merge commit preserving its full tree; GitHub reports PR #2 clean and its conflict-resolution CI passed. The stack remains open and not consolidated into `main`; do not merge later phases out of order.
 
-### Milestone 5 — Quality and deployment
-- Add tests for authorization, task lifecycle, requirements, and impact calculations.
-- Run typecheck, lint, tests, and production build in CI.
-- Add deployment configuration, monitoring, and production environment documentation.
+## Release blockers
 
-## Development rule
+- [x] Resolve the Phase 2 branch conflict and verify its CI.
+- [x] Generate and commit `package-lock.json`; use `npm ci` for repeatable CI installs and audits.
+- [x] Enforce required task skills/tools and one requester rating per completed task; derive community medals from verified activity.
+- [x] Deliver user-scoped in-app notifications for task state changes, messages, and drive participation, with read-state endpoints.
+- [x] Verify the Alembic chain and core task/proof/rating/notification/drive workflows against PostgreSQL in CI.
+- [x] Add bounded process-local throttles for task creation, messaging, proof uploads, ratings, and drive joins; atomically create private proof files.
+- [ ] Consolidate the full phase stack into `main` in dependency order.
+- [ ] Re-run all CI/security workflows on the final integrated tree.
+- [x] Use HttpOnly production access cookies, SameSite protection, Origin validation for cookie-authenticated writes, and server-side token-version revocation on logout.
+- [ ] Add refresh-token rotation and run browser-based CSRF/XSS acceptance tests.
+- [ ] Add shared/distributed rate limits and quotas at the gateway for all instances.
+- [x] Implement email verification and password recovery with hashed, single-use expiring tokens, anti-enumeration request endpoints, and SMTP delivery hooks; real SMTP configuration and acceptance testing remain required.
+- [ ] Add MFA/managed identity-provider integration.
+- [ ] Decide whether PostgreSQL RLS is required; otherwise keep and test application-layer authorization with least-privilege DB roles.
+- [ ] Add malware scanning, managed private object storage, quotas, retention and deletion policies for uploaded proof.
+- [ ] Integrate a compliant KYC provider/manual review and a payment/payout provider before enabling paid work; define refunds, disputes, fees, and settlement.
+- [ ] Validate deployment secrets, HTTPS, source-map publication, backups/restore, monitoring, and log redaction.
+- [ ] Run browser end-to-end journeys and staging DAST; obtain an independent penetration test before public launch.
 
-Never claim a demo-only interaction is production-ready. Keep secrets out of Git, and use .env.example to document required configuration without real credentials.
+## Definition of done
 
-
-### Phase 2 — Domain/data foundation (implementation batch)
-
-- Shared task lifecycle rules and task draft validation live in `src/domain/taskWorkflow.ts`.
-- Task UI actions use those shared rules instead of inline transition assumptions.
-- `src/data/taskRepository.ts` defines a replaceable repository boundary; its current adapter still uses browser localStorage only.
-- `tests/taskWorkflow.test.ts` covers lifecycle transitions and task validation; `tests/taskRepository.test.ts` covers repository adapter behavior including malformed/invalid stored records.
-- GitHub Actions run [37888151517](https://github.com/JayBorhade/SAVJ/actions/runs/37888151517) passed automated tests, typecheck, lint and production build for commit `76a3c492cefae0fb1cd48554da77757da6bc4fca`.
-- `docs/API_AND_DATA_CONTRACT.md` describes proposed endpoints, core data models and server-side security invariants. No production backend or database has been provisioned.
+SAVJ is ready for a controlled release only after the branch stack is integrated, latest CI and security checks are green, the live deployment is configured and tested, critical release blockers are closed or formally accepted, and real user journeys are verified in a browser. Passing CI alone does not establish production readiness.
