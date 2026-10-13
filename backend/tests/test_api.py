@@ -63,6 +63,7 @@ def test_task_lifecycle_permissions_and_impact():
     assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(worker_token)).status_code == 403
     completed = client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token))
     assert completed.status_code == 200 and completed.json()["status"] == "Completed"
+    assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token)).status_code == 409
     assert client.get("/api/v1/me/impact",headers=auth(worker_token)).json()["verified_completed_tasks"] == 1
 
 def test_drives_and_task_scoped_messages():
