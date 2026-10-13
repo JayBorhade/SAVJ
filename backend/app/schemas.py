@@ -128,6 +128,7 @@ class TaskCreate(BaseModel):
     required_skills: list[str] = Field(default_factory=list, max_length=20)
     required_tools: list[str] = Field(default_factory=list, max_length=20)
     location_text: str = Field(min_length=2, max_length=200)
+    private_location_text: str | None = Field(default=None, max_length=300)
     budget_rupees: int = Field(ge=0, le=10000000)
     scheduled_at: datetime | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
@@ -144,6 +145,14 @@ class TaskCreate(BaseModel):
                 raise ValueError("Each requirement must be 80 characters or fewer.")
             cleaned.append(requirement)
         return list(dict.fromkeys(cleaned))
+
+    @field_validator("private_location_text")
+    @classmethod
+    def normalize_private_location(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
     @field_validator("scheduled_at")
     @classmethod
@@ -171,6 +180,7 @@ class TaskOut(BaseModel):
     description: str
     category: str
     location_text: str
+    private_location_text: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     budget_minor_units: int
