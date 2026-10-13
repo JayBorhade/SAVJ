@@ -8,7 +8,7 @@ import {
 import './App.css';
 import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
 import { createBrowserTaskRepository } from './data/taskRepository';
-import { clearAccessToken, getAccessToken, savjApi, type ApiTask, type ApiTaskRating, type ApiUser } from './data/apiClient';
+import { clearAccessToken, getAccessToken, savjApi, type ApiTask, type ApiNotification, type ApiTaskRating, type ApiUser } from './data/apiClient';
 import LiveCommunity from './components/LiveCommunity';
 import LiveMessages from './components/LiveMessages';
 import LiveImpact from './components/LiveImpact';
@@ -107,6 +107,7 @@ export default function App() {
   const [category, setCategory] = useState('All tasks');
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
   const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(readLocalStorage('savj.joinedDrives', '[]')) as string[]; } catch { return []; } });
   useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { /* Browser storage may be disabled; the UI remains usable for this session. */ } }, [tasks]);
   useEffect(() => { writeLocalStorage('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
@@ -273,6 +274,35 @@ export default function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not submit this rating.'); }
     finally { setRatingBusy(false); }
   };
+  const openNotification = async (notification: ApiNotification) => {
+    setShowNotifications(false);
+    try {
+      if (!notification.read_at) {
+        const updated = await savjApi.markNotificationRead(notification.id);
+        setNotifications((items) => items.map((item) => item.id === updated.id ? updated : item));
+      }
+      if (notification.task_id) {
+        const apiTask = await savjApi.getTask(notification.task_id);
+        const task = fromApiTask(apiTask);
+        setTasks((items) => items.some((item) => item.id === task.id) ? items.map((item) => item.id === task.id ? task : item) : [task, ...items]);
+        setSelectedTask(task);
+        setActivePage('Explore');
+      } else if (notification.drive_id) {
+        setActivePage('Community');
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not open this notification.');
+    }
+  };
+  const markAllNotificationsRead = async () => {
+    try {
+      await savjApi.markAllNotificationsRead();
+      setNotifications((items) => items.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not mark notifications read.');
+    }
+  };
+  const unreadNotificationCount = notifications.filter((item) => !item.read_at).length;
   const signOut = async () => {
     try { if (backendConnected) await savjApi.logout(); }
     catch { /* Always clear local UI state even if the server session has already expired. */ }
@@ -323,6 +353,15 @@ export default function App() {
     return () => { cancelled = true; };
   }, [backendConnected, apiUser, selectedTask]);
 
+  useEffect(() => {
+    if (!backendConnected || !showNotifications) return;
+    let cancelled = false;
+    void savjApi.listNotifications()
+      .then((items) => { if (!cancelled) setNotifications(items); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load notifications.'); });
+    return () => { cancelled = true; };
+  }, [backendConnected, showNotifications]);
+
   const navItems = [
     { label: 'Overview', icon: Activity },
     { label: 'Explore', icon: Compass },
@@ -370,8 +409,8 @@ export default function App() {
           <div className="topbar-actions">
             <div className="location-pill"><MapPin size={15} /><span>{profileArea || 'Set your location'}</span><ChevronDown size={14} /></div>
             <div className="notification-wrap">
-              <button className="icon-button" aria-label="Notifications" onClick={() => setShowNotifications(!showNotifications)}><Bell size={19} /><i /></button>
-              {showNotifications && <div className="notification-popover"><strong>You’re all caught up</strong><p>New tasks and community updates will appear here.</p></div>}
+              <button className="icon-button" aria-label={`Notifications${unreadNotificationCount ? `, ${unreadNotificationCount} unread` : ''}`} aria-expanded={showNotifications} onClick={() => setShowNotifications(!showNotifications)}><Bell size={19} />{unreadNotificationCount > 0 && <span className="notification-count">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button>
+              {showNotifications && <div className="notification-popover"><div className="notification-popover-head"><strong>Notifications</strong>{backendConnected && unreadNotificationCount > 0 && <button type="button" onClick={() => void markAllNotificationsRead()}>Mark all read</button>}</div>{!backendConnected ? <p>Sign in to receive live task and community updates.</p> : notifications.length === 0 ? <p>You’re all caught up. Task and drive updates will appear here.</p> : <div className="notification-list">{notifications.map((notification) => <button type="button" key={notification.id} className={notification.read_at ? 'notification-item read' : 'notification-item unread'} onClick={() => void openNotification(notification)}><strong>{notification.title}</strong><span>{notification.body}</span><small>{new Date(notification.created_at).toLocaleString()}</small></button>)}</div>}</div>}
             </div>
             <button className="top-avatar" aria-label="Open profile" onClick={() => navigate('Profile')}>{(profileName || 'G').slice(0,1).toUpperCase()}</button>
           </div>
@@ -436,7 +475,7 @@ export default function App() {
       {backendConnected && selectedTask.status==='Awaiting approval' && <TaskProofViewer taskId={selectedTask.id} onNotice={setNotice} />}
       {selectedTask.status==='In progress'&&(!backendConnected||(apiUser&&selectedTask.workerId===apiUser.id))&&<div className="proof-fields"><label>Before photo (required)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(e)=>{const file=e.target.files?.[0]||null;setBeforeProofFile(file);setBeforeProofName(file?.name||'');}}/></label><label>After photo (required)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(e)=>{const file=e.target.files?.[0]||null;setAfterProofFile(file);setAfterProofName(file?.name||'');}}/></label><small>Images upload to private backend storage (JPEG, PNG or WebP; max 8 MB each) when signed in. Demo mode only checks file selection.</small></div>}
       {selectedTask.status==='Completed'&&backendConnected&&apiUser&&selectedTask.requesterId===apiUser.id&&<section className="section-card task-rating-panel"><h3>Rate your experience</h3>{ratingLoading?<p>Loading rating…</p>:taskRating?<><p><strong>Your rating:</strong> {'★'.repeat(taskRating.score)} ({taskRating.score}/5)</p>{taskRating.comment&&<p>{taskRating.comment}</p>}<small>One rating is allowed per completed task.</small></>:<form onSubmit={submitTaskRating}><label>Rating<select value={ratingScore} onChange={(event)=>setRatingScore(Number(event.target.value))}><option value={5}>5 — Excellent</option><option value={4}>4 — Good</option><option value={3}>3 — Okay</option><option value={2}>2 — Poor</option><option value={1}>1 — Very poor</option></select></label><label>Comment (optional)<textarea value={ratingComment} onChange={(event)=>setRatingComment(event.target.value)} maxLength={1000} rows={3} placeholder="Share a short, respectful review."/></label><button type="submit" className="primary-button" disabled={ratingBusy}>{ratingBusy?'Submitting…':'Submit rating'}</button></form>}</section>}
-      <div className="demo-disclaimer"><ShieldCheck size={15}/> Task actions use the backend when connected. Proof uploads are private and participant-authorized; requester notifications and KYC verification are not implemented.</div>
+      <div className="demo-disclaimer"><ShieldCheck size={15}/> Task actions use the backend when connected. Proof uploads are private and participant-authorized; in-app notifications are enabled for task and drive activity; KYC verification is not yet available.</div>
       <div className="onboarding-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedTask(null)}>Close</button>
       {selectedTask.status!=='Completed'&&selectedTask.status!=='Cancelled'&&(!backendConnected||(apiUser&&(selectedTask.requesterId===apiUser.id||selectedTask.workerId===apiUser.id)))&&<button type="button" className="secondary-button" onClick={async()=>{if(!window.confirm('Cancel this task? This cannot be undone after cancellation.'))return;if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'cancel'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task cancelled on the SAVJ backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not cancel task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Cancelled');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task cancelled in this browser demo.');}}>Cancel task</button>}
       {selectedTask.status==='Open'&&backendConnected&&apiUser&&missingRequirements(selectedTask,apiUser).length>0&&<p className="requirement-warning">Your profile is missing: {missingRequirements(selectedTask,apiUser).join(', ')}. Update your skills and tools before accepting.</p>}{selectedTask.status==='Open'&&(!backendConnected||(apiUser&&selectedTask.requesterId!==apiUser.id&&apiUser.purpose!=='Requester'&&missingRequirements(selectedTask,apiUser).length===0))&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'accept'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task accepted by the SAVJ backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not accept task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Accepted');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task accepted in this browser demo. No requester has been notified.');}}>{backendConnected?'Accept task':'Accept in demo'}</button>}
