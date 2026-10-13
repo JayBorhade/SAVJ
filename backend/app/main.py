@@ -49,7 +49,7 @@ async def security_headers(request, call_next):
     return response
 # Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
 _AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600), "/api/v1/tasks": (10, 60), "/api/v1/drives": (5, 60)}
-_ROUTE_LIMITS = [(re.compile(r"/api/v1/tasks/\\d+/messages"), (30, 60)), (re.compile(r"/api/v1/tasks/\\d+/rating"), (5, 3600)), (re.compile(r"/api/v1/tasks/\\d+/proofs/(before|after)"), (10, 60)), (re.compile(r"/api/v1/drives/\\d+/join"), (20, 60))]
+_ROUTE_LIMITS = [(re.compile(r"/api/v1/tasks/\d+/messages"), (30, 60)), (re.compile(r"/api/v1/tasks/\d+/rating"), (5, 3600)), (re.compile(r"/api/v1/tasks/\d+/proofs/(before|after)"), (10, 60)), (re.compile(r"/api/v1/drives/\d+/join"), (20, 60))]
 _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
 
