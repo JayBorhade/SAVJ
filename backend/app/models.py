@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Index, true
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
@@ -15,6 +16,7 @@ class User(Base):
     locality: Mapped[str] = mapped_column(String(160), default="Pune, Maharashtra")
     purpose: Mapped[str] = mapped_column(String(24), default="Both")
     skills_json: Mapped[str] = mapped_column(Text, default="[]")
+    tools_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     is_email_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
@@ -42,6 +44,8 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(120))
     description: Mapped[str] = mapped_column(Text, default="")
     category: Mapped[str] = mapped_column(String(80), default="Community cleanup")
+    required_skills_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
+    required_tools_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
     location_text: Mapped[str] = mapped_column(String(200))
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
@@ -52,6 +56,22 @@ class Task(Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    @property
+    def required_skills(self) -> list[str]:
+        try:
+            value = json.loads(self.required_skills_json or "[]")
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
+
+    @property
+    def required_tools(self) -> list[str]:
+        try:
+            value = json.loads(self.required_tools_json or "[]")
+            return value if isinstance(value, list) else []
+        except (TypeError, ValueError):
+            return []
 
 class CommunityDrive(Base):
     __tablename__ = "community_drives"
