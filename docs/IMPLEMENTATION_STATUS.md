@@ -4,7 +4,7 @@ Last updated: 2026-10-09
 
 ## Milestone 1 — Frontend foundation
 
-Status: **Frontend foundation + first Phase 1 workflow batch committed; build verification pending CI**
+Status: **Frontend foundation, Phase 1 build, and Phase 2 checks verified in GitHub Actions**
 
 Implemented in the current repository:
 - React + TypeScript application entry point.
@@ -29,10 +29,10 @@ The current dashboard uses sample data. Tasks, joined drives, and basic onboardi
 
 ## Next milestones
 
-### Phase 1 — Stabilization in progress
+### Phase 1 — Stabilization (implementation branch; PR review pending)
 - Initial onboarding and task-detail flow committed to the working branch.
 - Demo impact figures labelled as sample data.
-- Remaining: real server-side lifecycle/authorization, actual image uploads, profile/skills persistence, accessibility review, automated tests, and CI verification.
+- Remaining production work: server-side lifecycle/authorization, actual image uploads, profile/skills persistence and accessibility review. The Phase 1 branch build passes; Phase 2 adds domain tests and stricter CI checks.
 
 ### Milestone 2 — Frontend workflows
 - Create a structured task details view and task lifecycle states.
@@ -62,3 +62,13 @@ The current dashboard uses sample data. Tasks, joined drives, and basic onboardi
 ## Development rule
 
 Never claim a demo-only interaction is production-ready. Keep secrets out of Git, and use .env.example to document required configuration without real credentials.
+
+
+### Phase 2 — Domain/data foundation (implementation batch)
+
+- Shared task lifecycle rules and task draft validation live in `src/domain/taskWorkflow.ts`.
+- Task UI actions use those shared rules instead of inline transition assumptions.
+- `src/data/taskRepository.ts` defines a replaceable repository boundary; its current adapter still uses browser localStorage only.
+- `tests/taskWorkflow.test.ts` covers lifecycle transitions and task validation; `tests/taskRepository.test.ts` covers repository adapter behavior including malformed/invalid stored records.
+- GitHub Actions run [37888151517](https://github.com/JayBorhade/SAVJ/actions/runs/37888151517) passed automated tests, typecheck, lint and production build for commit `76a3c492cefae0fb1cd48554da77757da6bc4fca`.
+- `docs/API_AND_DATA_CONTRACT.md` describes proposed endpoints, core data models and server-side security invariants. No production backend or database has been provisioned.
