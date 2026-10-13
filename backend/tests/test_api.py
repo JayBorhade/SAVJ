@@ -272,6 +272,7 @@ def test_drives_and_task_scoped_messages():
     assert drive.status_code == 201, drive.text
     drive_id = drive.json()["id"]
     assert client.post(f"/api/v1/drives/{drive_id}/join",headers=auth(attendee_token)).json()["status"] == "joined"
+    assert any(n["notification_type"] == "drive_joined" for n in client.get("/api/v1/me/notifications",headers=auth(owner_token)).json())
     assert client.post(f"/api/v1/drives/{drive_id}/join",headers=auth(attendee_token)).json()["status"] == "already_joined"
     second_token, _ = register("secondattendee@example.com","Second Attendee")
     third_token, _ = register("thirdattendee@example.com","Third Attendee")
@@ -280,7 +281,11 @@ def test_drives_and_task_scoped_messages():
     assert full.status_code == 409
     task = client.post("/api/v1/tasks",headers=auth(owner_token),json={"title":"Garden cleanup","location_text":"Pune","budget_rupees":0}).json()
     assert client.get(f"/api/v1/tasks/{task['id']}/messages",headers=auth(attendee_token)).status_code == 403
+    assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(attendee_token)).status_code == 200
     assert client.get(f"/api/v1/tasks/{task['id']}/messages",headers=auth(owner_token)).status_code == 200
+    sent = client.post(f"/api/v1/tasks/{task['id']}/messages",headers=auth(owner_token),json={"body":"Please bring gloves."})
+    assert sent.status_code == 201, sent.text
+    assert any(n["notification_type"] == "task_message" for n in client.get("/api/v1/me/notifications",headers=auth(attendee_token)).json())
 
 
 def test_private_task_proof_upload_permissions_and_validation(tmp_path, monkeypatch):
