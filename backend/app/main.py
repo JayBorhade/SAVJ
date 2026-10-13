@@ -54,7 +54,7 @@ _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
 
 @app.middleware("http")
-async def limit_auth_attempts(request: Request, call_next):
+async def limit_rate_limited_requests(request: Request, call_next):
     if settings.app_env.lower() in {"test", "testing"}:
         return await call_next(request)
     policy = _AUTH_LIMITS.get(request.url.path)
@@ -68,7 +68,7 @@ async def limit_auth_attempts(request: Request, call_next):
         with _auth_attempts_lock:
             recent = [stamp for stamp in _auth_attempts.get(key, []) if now - stamp < window]
             if len(recent) >= maximum:
-                return JSONResponse(status_code=429, content={"detail": "Too many authentication attempts. Try again later."}, headers={"Retry-After": str(max(1, int(window - (now - recent[0]))))})
+                return JSONResponse(status_code=429, content={"detail": "Too many requests. Try again later."}, headers={"Retry-After": str(max(1, int(window - (now - recent[0]))))})
             recent.append(now)
             _auth_attempts[key] = recent
             if len(_auth_attempts) > 10000:
