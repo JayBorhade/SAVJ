@@ -113,6 +113,18 @@ class ImpactEvent(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+class TaskRating(Base):
+    __tablename__ = "task_ratings"
+    __table_args__ = (UniqueConstraint("task_id", name="uq_task_rating_task"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    requester_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    worker_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
+    score: Mapped[int] = mapped_column(Integer)
+    comment: Mapped[str] = mapped_column(String(1000), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class TaskProof(Base):
     __tablename__ = "task_proofs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
