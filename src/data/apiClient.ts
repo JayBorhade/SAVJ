@@ -24,7 +24,8 @@ export type ApiTask = {
   category: string;
   required_skills: string[];
   required_tools: string[];
-  location_text: number | null;
+  location_text: string;
+  latitude: number | null;
   longitude: number | null;
   budget_minor_units: number;
   currency: string;
