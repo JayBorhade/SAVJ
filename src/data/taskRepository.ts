@@ -36,6 +36,7 @@ function isSavjTaskRecord(value: unknown): value is SavjTaskRecord {
     && typeof task.title === 'string'
     && typeof task.category === 'string'
     && typeof task.location === 'string'
+    && (task.privateLocation === undefined || typeof task.privateLocation === 'string')
     && typeof task.distance === 'number' && Number.isFinite(task.distance)
     && typeof task.budget === 'number' && Number.isFinite(task.budget) && task.budget >= 0
     && typeof task.date === 'string'
