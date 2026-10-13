@@ -20,6 +20,14 @@ export default function LiveImpact({ backendConnected, onNotice }: { backendConn
     {loading && <p role="status">Loading verified impact…</p>}
     <section className="stats-grid impact-stats"><Stat icon={<CheckCircle2 size={19}/>} label="Verified tasks completed" value={impact?.verified_completed_tasks} /><Stat icon={<Sprout size={19}/>} label="Community drives joined" value={impact?.community_drives_joined} /><Stat icon={<TreePine size={19}/>} label="Trees planted" value={null} /><Stat icon={<Recycle size={19}/>} label="Waste collected" value={null}/></section>
     <div className="section-card achievement-card"><div className="achievement-badge"><Sprout size={32}/></div><div><span className="eyebrow">VERIFIED CONTRIBUTIONS</span><h2>Your contribution history</h2><p>Counts include only backend-recorded activity. Tree counts, waste weights and volunteer hours are not yet collected by the system.</p></div></div>
+    <section className="section-card impact-achievements"><div className="section-heading"><div><h3>Community medals</h3><p>Earned from verified task completions and recorded drive participation.</p></div></div><div className="medal-grid">
+      {[
+        { name: 'First Good Deed', description: 'Complete your first task', unlocked: (impact?.verified_completed_tasks || 0) >= 1, mark: '🌱' },
+        { name: 'Green Volunteer', description: 'Join your first community drive', unlocked: (impact?.community_drives_joined || 0) >= 1, mark: '🌿' },
+        { name: 'Community Helper', description: 'Complete five tasks', unlocked: (impact?.verified_completed_tasks || 0) >= 5, mark: '🤝' },
+        { name: 'Earth Guardian', description: 'Complete ten tasks and join three drives', unlocked: (impact?.verified_completed_tasks || 0) >= 10 && (impact?.community_drives_joined || 0) >= 3, mark: '🌍' },
+      ].map((medal) => <article className={medal.unlocked ? 'medal-card unlocked' : 'medal-card locked'} key={medal.name}><span className="medal-mark">{medal.mark}</span><div><strong>{medal.name}</strong><p>{medal.description}</p><small>{medal.unlocked ? 'Unlocked from verified activity' : 'Not unlocked yet'}</small></div></article>)}
+    </div></section>
   </>;
 }
 function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: number | null | undefined }) {
