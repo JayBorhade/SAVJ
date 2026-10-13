@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 class UserCreate(BaseModel):
@@ -8,6 +8,19 @@ class UserCreate(BaseModel):
     locality: str = Field(default="Pune, Maharashtra", min_length=1, max_length=160)
     purpose: str = Field(default="Both", pattern="^(Requester|Worker|Both)$")
     skills: list[str] = Field(default_factory=list, max_length=30)
+    @field_validator("skills")
+    @classmethod
+    def normalize_skills(cls, value: list[str]) -> list[str]:
+        cleaned = []
+        for item in value:
+            skill = item.strip()
+            if not skill:
+                continue
+            if len(skill) > 80:
+                raise ValueError("Each skill must be 80 characters or fewer.")
+            cleaned.append(skill)
+        return list(dict.fromkeys(cleaned))
+
     @field_validator("display_name", "locality")
     @classmethod
     def trim_required(cls, value: str) -> str:
@@ -24,6 +37,31 @@ class UserUpdate(BaseModel):
     locality: str | None = Field(default=None, min_length=1, max_length=160)
     purpose: str | None = Field(default=None, pattern="^(Requester|Worker|Both)$")
     skills: list[str] | None = Field(default=None, max_length=30)
+
+    @field_validator("display_name", "locality")
+    @classmethod
+    def trim_nonempty_profile_fields(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be blank.")
+        return value
+
+    @field_validator("skills")
+    @classmethod
+    def normalize_updated_skills(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = []
+        for item in value:
+            skill = item.strip()
+            if not skill:
+                continue
+            if len(skill) > 80:
+                raise ValueError("Each skill must be 80 characters or fewer.")
+            cleaned.append(skill)
+        return list(dict.fromkeys(cleaned))
 
 class UserOut(BaseModel):
     id: int
@@ -50,6 +88,17 @@ class TaskCreate(BaseModel):
     scheduled_at: datetime | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    @field_validator("scheduled_at")
+    @classmethod
+    def validate_scheduled_at(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Scheduled time must include a timezone.")
+        if value <= datetime.now(timezone.utc):
+            raise ValueError("Scheduled time must be in the future.")
+        return value
+
     @field_validator("title", "location_text", "category")
     @classmethod
     def trim_task_fields(cls, value: str) -> str:
@@ -82,6 +131,28 @@ class DriveCreate(BaseModel):
     location_text: str = Field(min_length=2, max_length=200)
     starts_at: datetime
     capacity: int | None = Field(default=None, ge=1, le=100000)
+
+    @field_validator("title", "location_text")
+    @classmethod
+    def trim_required_drive_fields(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be blank.")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def trim_drive_description(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("starts_at")
+    @classmethod
+    def validate_drive_start(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Drive start time must include a timezone.")
+        if value <= datetime.now(timezone.utc):
+            raise ValueError("Drive start time must be in the future.")
+        return value
 
 class DriveOut(BaseModel):
     id: int
