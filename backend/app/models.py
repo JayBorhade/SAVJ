@@ -113,6 +113,19 @@ class ImpactEvent(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+class UserNotification(Base):
+    __tablename__ = "user_notifications"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    notification_type: Mapped[str] = mapped_column(String(60))
+    title: Mapped[str] = mapped_column(String(140))
+    body: Mapped[str] = mapped_column(String(500), default="")
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    drive_id: Mapped[int | None] = mapped_column(ForeignKey("community_drives.id", ondelete="SET NULL"), nullable=True, index=True)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class TaskRating(Base):
     __tablename__ = "task_ratings"
     __table_args__ = (UniqueConstraint("task_id", name="uq_task_rating_task"),)
