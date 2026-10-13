@@ -82,7 +82,21 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
         monkeypatch.setattr(main_module.settings, "cors_origins", "http://localhost:5173,http://127.0.0.1:5173")
 
 
-def test_task_lifecycle_permissions_and_impact():
+def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
+    from app import main as main_module
+    monkeypatch.setattr(main_module, "UPLOAD_DIR", tmp_path / "task-proof-files")
+
+    def upload_pair(task_id: int, token: str) -> None:
+        for kind in ("before", "after"):
+            buffer = BytesIO()
+            Image.new("RGB", (2, 2), (40, 120, 60)).save(buffer, format="PNG")
+            response = client.post(
+                f"/api/v1/tasks/{task_id}/proofs/{kind}",
+                headers=auth(token),
+                files={"file": (f"{kind}.png", buffer.getvalue(), "image/png")},
+            )
+            assert response.status_code == 201, response.text
+
     requester_token, _ = register("owner@example.com","Owner")
     worker_token, worker = register("worker@example.com","Worker")
     outsider_token, _ = register("taskoutsider@example.com","Outsider")
@@ -102,10 +116,14 @@ def test_task_lifecycle_permissions_and_impact():
     assert outsider_tasks.status_code == 200
     assert all(item["id"] != task["id"] for item in outsider_tasks.json())
     assert client.post(f"/api/v1/tasks/{task['id']}/start",headers=auth(worker_token)).status_code == 200
+    assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 409
+    upload_pair(task["id"], worker_token)
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
-    # Requesters can ask for rework; the assigned worker can resubmit.
+    # Requesters can ask for rework; a new proof pair is required for resubmission.
     rework = client.post(f"/api/v1/tasks/{task['id']}/start",headers=auth(requester_token))
     assert rework.status_code == 200 and rework.json()["status"] == "In progress"
+    assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 409
+    upload_pair(task["id"], worker_token)
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
     assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(worker_token)).status_code == 403
     completed = client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token))
