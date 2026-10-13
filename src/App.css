@@ -76,3 +76,5 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .medal-card strong { display: block; margin-bottom: 4px; }
 .medal-card p { margin: 0 0 6px; font-size: 0.9rem; }
 .medal-card small { color: var(--muted-text, #65736a); }
+
+.worker-rating { margin-top: 4px; color: var(--muted-text, #65736a); font-size: 0.88rem; }
