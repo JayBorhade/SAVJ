@@ -9,7 +9,7 @@ import threading
 import time
 from math import asin, cos, radians, sin, sqrt
 from typing import Annotated
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,7 +21,7 @@ from .config import get_settings
 from .database import Base, engine, get_db
 from .models import CommunityDrive, DriveParticipation, ImpactEvent, Message, Task, TaskProof, User
 from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
-from .security import create_access_token, decode_access_token, hash_password, verify_password
+from .security import create_access_token, decode_access_token_claims, hash_password, verify_password
 
 settings = get_settings()
 app = FastAPI(title="SAVJ API", version="0.1.0", description="Authenticated API for the SAVJ environmental community platform.")
@@ -71,14 +71,58 @@ async def limit_auth_attempts(request: Request, call_next):
                         _auth_attempts.pop(old_key, None)
     return await call_next(request)
 
+_ACCESS_COOKIE = "savj_access"
+_PRODUCTION = settings.app_env.lower() in {"production", "prod"}
+_COOKIE_PATH = "/api/v1"
 bearer = HTTPBearer(auto_error=False)
 
-def get_current_user(credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)], db: Annotated[Session, Depends(get_db)]) -> User:
-    if not credentials: raise HTTPException(status_code=401, detail="Authentication required.")
-    user_id = decode_access_token(credentials.credentials)
+
+@app.middleware("http")
+async def protect_cookie_authenticated_writes(request: Request, call_next):
+    # SameSite=Lax is useful defense-in-depth; validate Origin as well because
+    # browser cookies are ambient credentials and may otherwise enable CSRF.
+    if (
+        _PRODUCTION
+        and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and request.cookies.get(_ACCESS_COOKIE)
+        and not request.headers.get("authorization")
+    ):
+        origin = request.headers.get("origin")
+        if not origin or origin.rstrip("/") not in settings.cors_origin_list:
+            return JSONResponse(status_code=403, content={"detail": "Request origin is not allowed."})
+    return await call_next(request)
+
+
+def get_current_user(
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+    db: Annotated[Session, Depends(get_db)],
+) -> User:
+    raw_token = credentials.credentials if credentials else request.cookies.get(_ACCESS_COOKIE)
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    user_id, token_version = decode_access_token_claims(raw_token)
     user = db.get(User, user_id)
-    if not user or not user.is_active: raise HTTPException(status_code=401, detail="User is unavailable.")
+    if not user or not user.is_active or user.token_version != token_version:
+        raise HTTPException(status_code=401, detail="User session is unavailable or has been revoked.")
     return user
+
+
+def issue_auth_response(user: User, response: Response) -> TokenOut:
+    token, seconds = create_access_token(user.id, user.token_version)
+    if _PRODUCTION:
+        response.set_cookie(
+            key=_ACCESS_COOKIE,
+            value=token,
+            max_age=seconds,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path=_COOKIE_PATH,
+        )
+        # Do not expose the bearer credential to JavaScript in production.
+        return TokenOut(access_token=None, expires_in=seconds, user=user_output(user))
+    return TokenOut(access_token=token, expires_in=seconds, user=user_output(user))
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db)]
@@ -97,7 +141,7 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "savj-api"}
 
 @app.post("/api/v1/auth/register", response_model=TokenOut, status_code=201)
-def register(payload: UserCreate, db: Database) -> TokenOut:
+def register(payload: UserCreate, response: Response, db: Database) -> TokenOut:
     email = str(payload.email).lower()
     user = User(email=email, display_name=payload.display_name.strip(), password_hash=hash_password(payload.password), locality=payload.locality.strip(), purpose=payload.purpose, skills_json=json.dumps(sorted({s.strip() for s in payload.skills if s.strip()})))
     db.add(user)
@@ -107,16 +151,30 @@ def register(payload: UserCreate, db: Database) -> TokenOut:
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="An account with this email already exists.") from None
-    token, seconds = create_access_token(user.id)
-    return TokenOut(access_token=token, expires_in=seconds, user=user_output(user))
+    return issue_auth_response(user, response)
 
 @app.post("/api/v1/auth/login", response_model=TokenOut)
-def login(payload: UserLogin, db: Database) -> TokenOut:
+def login(payload: UserLogin, response: Response, db: Database) -> TokenOut:
     user = db.scalar(select(User).where(User.email == str(payload.email).lower()))
     if not user or not verify_password(payload.password, user.password_hash) or not user.is_active:
         raise HTTPException(status_code=401, detail="Email or password is incorrect.")
-    token, seconds = create_access_token(user.id)
-    return TokenOut(access_token=token, expires_in=seconds, user=user_output(user))
+    return issue_auth_response(user, response)
+
+
+@app.post("/api/v1/auth/logout", status_code=204)
+def logout(user: CurrentUser, db: Database, response: Response) -> Response:
+    # Incrementing token_version revokes every access token issued before logout.
+    user.token_version += 1
+    db.commit()
+    response.delete_cookie(
+        key=_ACCESS_COOKIE,
+        path=_COOKIE_PATH,
+        httponly=True,
+        secure=_PRODUCTION,
+        samesite="lax",
+    )
+    response.status_code = 204
+    return response
 
 @app.get("/api/v1/me", response_model=UserOut)
 def get_me(user: CurrentUser) -> UserOut:
