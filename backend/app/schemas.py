@@ -8,6 +8,20 @@ class UserCreate(BaseModel):
     locality: str = Field(default="Pune, Maharashtra", min_length=1, max_length=160)
     purpose: str = Field(default="Both", pattern="^(Requester|Worker|Both)$")
     skills: list[str] = Field(default_factory=list, max_length=30)
+    tools: list[str] = Field(default_factory=list, max_length=30)
+    @field_validator("tools")
+    @classmethod
+    def normalize_tools(cls, value: list[str]) -> list[str]:
+        cleaned = []
+        for item in value:
+            tool = item.strip()
+            if not tool:
+                continue
+            if len(tool) > 80:
+                raise ValueError("Each tool must be 80 characters or fewer.")
+            cleaned.append(tool)
+        return list(dict.fromkeys(cleaned))
+
     @field_validator("skills")
     @classmethod
     def normalize_skills(cls, value: list[str]) -> list[str]:
@@ -37,6 +51,22 @@ class UserUpdate(BaseModel):
     locality: str | None = Field(default=None, min_length=1, max_length=160)
     purpose: str | None = Field(default=None, pattern="^(Requester|Worker|Both)$")
     skills: list[str] | None = Field(default=None, max_length=30)
+    tools: list[str] | None = Field(default=None, max_length=30)
+
+    @field_validator("tools")
+    @classmethod
+    def normalize_updated_tools(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = []
+        for item in value:
+            tool = item.strip()
+            if not tool:
+                continue
+            if len(tool) > 80:
+                raise ValueError("Each tool must be 80 characters or fewer.")
+            cleaned.append(tool)
+        return list(dict.fromkeys(cleaned))
 
     @field_validator("display_name", "locality")
     @classmethod
@@ -70,6 +100,7 @@ class UserOut(BaseModel):
     locality: str
     purpose: str
     skills: list[str]
+    tools: list[str] = Field(default_factory=list)
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -94,11 +125,26 @@ class TaskCreate(BaseModel):
     title: str = Field(min_length=3, max_length=120)
     description: str = Field(default="", max_length=4000)
     category: str = Field(default="Community cleanup", min_length=1, max_length=80)
+    required_skills: list[str] = Field(default_factory=list, max_length=20)
+    required_tools: list[str] = Field(default_factory=list, max_length=20)
     location_text: str = Field(min_length=2, max_length=200)
     budget_rupees: int = Field(ge=0, le=10000000)
     scheduled_at: datetime | None = None
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
+    @field_validator("required_skills", "required_tools")
+    @classmethod
+    def normalize_requirements(cls, value: list[str]) -> list[str]:
+        cleaned = []
+        for item in value:
+            requirement = item.strip()
+            if not requirement:
+                continue
+            if len(requirement) > 80:
+                raise ValueError("Each requirement must be 80 characters or fewer.")
+            cleaned.append(requirement)
+        return list(dict.fromkeys(cleaned))
+
     @field_validator("scheduled_at")
     @classmethod
     def validate_scheduled_at(cls, value: datetime | None) -> datetime | None:
@@ -134,6 +180,8 @@ class TaskOut(BaseModel):
     version: int
     created_at: datetime
     updated_at: datetime
+    required_skills: list[str] = Field(default_factory=list)
+    required_tools: list[str] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
 class DriveCreate(BaseModel):
@@ -211,4 +259,5 @@ class WorkerOut(BaseModel):
     locality: str
     purpose: str
     skills: list[str]
+    tools: list[str] = Field(default_factory=list)
     created_at: datetime
