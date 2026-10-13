@@ -43,11 +43,9 @@ export type AuthResult = {
 type ApiError = { detail?: string | Array<{ msg?: string }> };
 
 export function getAccessToken(): string | null {
-  try {
-    const stored = window.localStorage.getItem(TOKEN_KEY);
-    if (stored) return stored;
-  } catch { /* private browsing or storage policy may disable persistence */ }
-  return volatileAccessToken;
+  if (volatileAccessToken) return volatileAccessToken;
+  try { return window.localStorage.getItem(TOKEN_KEY); }
+  catch { return null; }
 }
 
 export function clearAccessToken(): void {
