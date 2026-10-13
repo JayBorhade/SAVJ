@@ -26,8 +26,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, User
-from .schemas import DriveCreate, DriveOut, EmailAddressRequest, EmailTokenRequest, MessageCreate, MessageOut, PasswordResetConfirm, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
+from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, TaskRating, User
+from .schemas import DriveCreate, DriveOut, EmailAddressRequest, EmailTokenRequest, MessageCreate, MessageOut, PasswordResetConfirm, TaskCreate, TaskOut, TaskProofOut, TaskRatingCreate, TaskRatingOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
 from .security import create_access_token, decode_access_token_claims, hash_password, verify_password
 
 settings = get_settings()
@@ -422,6 +422,41 @@ def get_task(task_id: int, user: CurrentUser, db: Database) -> Task:
         raise HTTPException(status_code=404, detail="Task not found.")
     return task
 
+@app.get("/api/v1/tasks/{task_id}/rating", response_model=TaskRatingOut | None)
+def get_task_rating(task_id: int, user: CurrentUser, db: Database) -> TaskRating | None:
+    task = db.get(Task, task_id)
+    if not task or user.id not in {task.requester_id, task.worker_id}:
+        raise HTTPException(status_code=404, detail="Task rating not found.")
+    return db.scalar(select(TaskRating).where(TaskRating.task_id == task_id))
+
+
+@app.post("/api/v1/tasks/{task_id}/rating", response_model=TaskRatingOut, status_code=201)
+def create_task_rating(task_id: int, payload: TaskRatingCreate, user: CurrentUser, db: Database) -> TaskRating:
+    task = db.scalar(select(Task).where(Task.id == task_id).with_for_update())
+    if not task or user.id != task.requester_id:
+        raise HTTPException(status_code=404, detail="Completed task not found.")
+    if task.status != "Completed" or task.worker_id is None:
+        raise HTTPException(status_code=409, detail="Only a completed task with an assigned worker can be rated.")
+    existing = db.scalar(select(TaskRating).where(TaskRating.task_id == task.id))
+    if existing:
+        raise HTTPException(status_code=409, detail="This task has already been rated.")
+    rating = TaskRating(
+        task_id=task.id,
+        requester_id=user.id,
+        worker_id=task.worker_id,
+        score=payload.score,
+        comment=payload.comment,
+    )
+    db.add(rating)
+    try:
+        db.commit()
+        db.refresh(rating)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This task has already been rated.") from None
+    return rating
+
+
 def transition(db: Session, task: Task, target: str, actor: User) -> Task:
     # Always re-read and lock the latest row before validating a transition.
     # This serializes status changes and prevents duplicate completion events
@@ -550,12 +585,18 @@ def list_workers(db: Database, user: CurrentUser, search: str | None = None, ski
         term = "%" + search.strip()[:100] + "%"
         query = query.where((User.display_name.ilike(term)) | (User.locality.ilike(term)))
     people = list(db.scalars(query.order_by(User.created_at.desc()).offset(offset).limit(limit)).all())
+    rating_rows = db.execute(
+        select(TaskRating.worker_id, func.avg(TaskRating.score), func.count(TaskRating.id))
+        .group_by(TaskRating.worker_id)
+    ).all()
+    ratings = {worker_id: (float(average), int(count)) for worker_id, average, count in rating_rows}
     results = []
     for person in people:
         skills = json.loads(person.skills_json)
         if skill and not any(skill.casefold() in item.casefold() for item in skills):
             continue
-        results.append(WorkerOut(id=person.id, display_name=person.display_name, locality=person.locality, purpose=person.purpose, skills=skills, tools=json.loads(person.tools_json), created_at=person.created_at))
+        average, count = ratings.get(person.id, (0.0, 0))
+        results.append(WorkerOut(id=person.id, display_name=person.display_name, locality=person.locality, purpose=person.purpose, skills=skills, tools=json.loads(person.tools_json), rating_average=round(average, 2) if count else None, rating_count=count, created_at=person.created_at))
     return results
 
 @app.get("/api/v1/me/impact")
