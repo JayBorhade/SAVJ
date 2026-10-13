@@ -321,7 +321,7 @@ export default function App() {
       .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load task rating.'); })
       .finally(() => { if (!cancelled) setRatingLoading(false); });
     return () => { cancelled = true; };
-  }, [backendConnected, apiUser?.id, selectedTask?.id, selectedTask?.status]);
+  }, [backendConnected, apiUser, selectedTask]);
 
   const navItems = [
     { label: 'Overview', icon: Activity },
