@@ -36,7 +36,7 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class TokenOut(BaseModel):
-    access_token: str
+    access_token: str | None = None
     token_type: str = "bearer"
     expires_in: int
     user: UserOut
