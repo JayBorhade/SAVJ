@@ -54,3 +54,25 @@ button:disabled{opacity:.45;cursor:not-allowed}
   font-size: 0.9rem;
   line-height: 1.45;
 }
+
+
+.medal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.medal-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-color, #dce6dd);
+  border-radius: 12px;
+  background: var(--card-background, #fff);
+}
+.medal-card.locked { opacity: 0.62; }
+.medal-mark { font-size: 1.65rem; line-height: 1; }
+.medal-card strong { display: block; margin-bottom: 4px; }
+.medal-card p { margin: 0 0 6px; font-size: 0.9rem; }
+.medal-card small { color: var(--muted-text, #65736a); }
