@@ -12,7 +12,7 @@
 - Personalized onboarding, name greeting, locality chip, task feed, search/category/radius controls, task creation, worker directory, community-drive UI, task messaging, impact/profile screens, map UI, and proof-review components.
 - Typed API client connects authentication, profile, task, worker, drive, messaging, impact, and proof routes to FastAPI.
 - Browser-local demo data remains available when signed out. Some dashboard sample content is illustrative and must not be mistaken for live backend data.
-- The current access token is stored in `localStorage`; replace this with a reviewed production session design before public launch.
+- Production builds use Secure, HttpOnly, SameSite=Lax access cookies with Origin checks for cookie-authenticated writes; JavaScript does not receive the bearer token. Development retains the local bearer-token flow. Token-version checks revoke previous access tokens on logout; refresh-token rotation is not implemented.
 
 ### Backend
 - FastAPI + SQLAlchemy API for registration/login, profile, task discovery/lifecycle, worker directory, community drives, task messages, impact totals, and private before/after proof images.
@@ -48,9 +48,10 @@ Security PR #18 targets `phase-16/launch-hardening`, not `main`. Phase 17 verifi
 - [ ] Resolve and verify the Phase 2 merge conflict; consolidate the stacked PRs in dependency order.
 - [ ] Generate and commit `package-lock.json`; use `npm ci` for repeatable CI installs and audits.
 - [ ] Re-run all CI/security workflows on the final integrated tree.
-- [ ] Replace localStorage bearer-token persistence with a reviewed production session lifecycle, including refresh/revocation and appropriate CSRF/XSS protections.
+- [x] Use HttpOnly production access cookies, SameSite protection, Origin validation for cookie-authenticated writes, and server-side token-version revocation on logout.
+- [ ] Add refresh-token rotation and a recovery/session-management policy; run browser-based CSRF/XSS acceptance tests.
 - [ ] Add shared/distributed rate limits and quotas at the gateway for all instances.
-- [ ] Decide and implement MFA, email verification, account recovery, and production identity-provider integration as required.
+- [ ] Implement email verification, password recovery, MFA, and any production identity-provider integration with a configured provider and tested token lifecycle.
 - [ ] Decide whether PostgreSQL RLS is required; otherwise keep and test application-layer authorization with least-privilege DB roles.
 - [ ] Add malware scanning, private object storage, quotas, retention and deletion policies for uploaded proof.
 - [ ] Validate deployment secrets, HTTPS, source-map publication, backups/restore, monitoring, and log redaction.
