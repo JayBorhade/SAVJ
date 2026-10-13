@@ -9,6 +9,7 @@ export type SavjTaskRecord = {
   title: string;
   category: string;
   location: string;
+  privateLocation?: string;
   distance: number;
   budget: number;
   date: string;
