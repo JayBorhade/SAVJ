@@ -31,7 +31,7 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 | 17 | Source maps / browser policy | Nginx now sends a Content-Security-Policy; source-map publication was not verified against a built artifact or deployed response. | Verify the deployed CSP and ensure production source maps are not publicly published unless access-controlled and intentionally required. |
 | 18 | Default credentials | Production rejects weak/default JWT secrets; no seeded default account was identified in reviewed files. | Check deployment, database, and admin credentials outside Git before release. |
 | 19 | Sensitive logs | No explicit credential logging was identified in inspected excerpts; runtime/deployment logs were not available. | Redact Authorization headers, passwords, tokens, personal data, and uploaded content; review host logs. |
-| 20 | Vulnerable dependencies | Initial audits found vulnerable frontend chains and pytest 8.4.2. Dependencies were upgraded, a committed `package-lock.json` was generated in GitHub Actions, and `npm ci` plus `npm audit --audit-level=high` passed in the lockfile job. Full CI/security checks for the latest code changes are still running. | Keep lockfile updates reviewed, require `npm ci` in CI and container builds, and verify all checks on the final integrated release tree. |
+| 20 | Vulnerable dependencies | Initial audits found vulnerable frontend chains and pytest 8.4.2. Dependencies were upgraded, a committed `package-lock.json` was generated in GitHub Actions, and `npm ci` plus `npm audit --audit-level=high` passed. On the code head preceding the latest UI/doc-only changes, npm/pip audits, CodeQL, Gitleaks, frontend CI, backend tests, PostgreSQL migration/API smoke tests, and container builds passed. | Keep lockfile updates reviewed, require `npm ci` in CI/container builds, and verify all checks on the exact final integration PR head. |
 
 ## Release gates
 
@@ -44,6 +44,7 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 - [ ] Add MFA and refresh-token rotation.
 - [ ] Verify proof-upload malware handling, private storage permissions, retention, and deletion.
 - [x] Add multi-account regression tests for task visibility, lifecycle transitions, proof permissions, ratings, and notification ownership.
+- [x] Run PostgreSQL migration and API smoke tests in CI, alongside SQLite API regression tests.
 - [ ] Run browser end-to-end tests and direct API authorization checks against the final integrated deployment.
 - [ ] Review production headers, HTTPS, source-map publication, database privileges/RLS decision, logs, backups, and deployment secrets.
 - [ ] Integrate a compliant KYC provider/manual review and a payment/payout provider before enabling paid work; define refunds, disputes, fees, and settlement.
