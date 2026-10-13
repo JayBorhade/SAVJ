@@ -241,6 +241,9 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     open_list = client.get("/api/v1/tasks",headers=auth(outsider_token),params={"status":"Open"}).json()
     listed_task = next(item for item in open_list if item["id"] == task["id"])
     assert listed_task["private_location_text"] is None and listed_task["latitude"] == 18.52
+    nearby_list = client.get("/api/v1/tasks",headers=auth(outsider_token),params={"status":"Open","latitude":18.52,"longitude":73.86,"radius_km":5}).json()
+    nearby_task = next(item for item in nearby_list if item["id"] == task["id"])
+    assert nearby_task["private_location_text"] is None and nearby_task["latitude"] == 18.52
     assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(requester_token)).status_code == 403
     accepted = client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(worker_token))
     assert accepted.status_code == 200, accepted.text
