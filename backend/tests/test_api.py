@@ -72,6 +72,11 @@ def test_drives_and_task_scoped_messages():
     drive_id = drive.json()["id"]
     assert client.post(f"/api/v1/drives/{drive_id}/join",headers=auth(attendee_token)).json()["status"] == "joined"
     assert client.post(f"/api/v1/drives/{drive_id}/join",headers=auth(attendee_token)).json()["status"] == "already_joined"
+    second_token, _ = register("secondattendee@example.com","Second Attendee")
+    third_token, _ = register("thirdattendee@example.com","Third Attendee")
+    assert client.post(f"/api/v1/drives/{drive_id}/join",headers=auth(second_token)).json()["status"] == "joined"
+    full = client.post(f"/api/v1/drives/{drive_id}/join",headers=auth(third_token))
+    assert full.status_code == 409
     task = client.post("/api/v1/tasks",headers=auth(owner_token),json={"title":"Garden cleanup","location_text":"Pune","budget_rupees":0}).json()
     assert client.get(f"/api/v1/tasks/{task['id']}/messages",headers=auth(attendee_token)).status_code == 403
     assert client.get(f"/api/v1/tasks/{task['id']}/messages",headers=auth(owner_token)).status_code == 200
