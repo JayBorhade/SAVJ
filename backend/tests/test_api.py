@@ -239,6 +239,18 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     assert completed.status_code == 200 and completed.json()["status"] == "Completed"
     assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token)).status_code == 409
     assert client.get("/api/v1/me/impact",headers=auth(worker_token)).json()["verified_completed_tasks"] == 1
+    rating_response = client.post(
+        f"/api/v1/tasks/{task['id']}/rating",
+        headers=auth(requester_token),
+        json={"score": 5, "comment": "Reliable and careful work."},
+    )
+    assert rating_response.status_code == 201, rating_response.text
+    assert client.get(f"/api/v1/tasks/{task['id']}/rating",headers=auth(requester_token)).json()["score"] == 5
+    assert client.post(f"/api/v1/tasks/{task['id']}/rating",headers=auth(requester_token),json={"score": 4}).status_code == 409
+    assert client.post(f"/api/v1/tasks/{task['id']}/rating",headers=auth(worker_token),json={"score": 5}).status_code == 404
+    worker_rows = client.get("/api/v1/workers",headers=auth(requester_token)).json()
+    worker_row = next(item for item in worker_rows if item["id"] == worker["id"])
+    assert worker_row["rating_average"] == 5.0 and worker_row["rating_count"] == 1
 
 def test_drives_and_task_scoped_messages():
     owner_token, _ = register("driveowner@example.com","Drive Owner")
