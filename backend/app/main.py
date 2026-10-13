@@ -47,7 +47,7 @@ async def security_headers(request, call_next):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 # Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
-_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600)}
+_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600)}
 _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
 
@@ -309,7 +309,7 @@ def request_password_reset(payload: EmailAddressRequest, db: Database) -> dict[s
 
 
 @app.post("/api/v1/auth/password-reset/confirm")
-def confirm_password_reset(payload: PasswordResetConfirm, db: Database) -> dict[str, str]:
+def confirm_password_reset(payload: PasswordResetConfirm, response: Response, db: Database) -> dict[str, str]:
     token = _valid_action_token(db, payload.token, "password_reset")
     if not token:
         raise HTTPException(status_code=400, detail="This password-reset link is invalid or expired.")
@@ -331,6 +331,7 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Database) -> dict[
     user.password_hash = hash_password(payload.new_password)
     user.token_version += 1
     db.commit()
+    response.delete_cookie(key=_ACCESS_COOKIE, path=_COOKIE_PATH, httponly=True, secure=_PRODUCTION, samesite="lax")
     return {"message": "Password reset successfully. Sign in with your new password."}
 
 
