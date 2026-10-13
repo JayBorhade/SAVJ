@@ -101,6 +101,8 @@ class UserOut(BaseModel):
     purpose: str
     skills: list[str]
     tools: list[str] = Field(default_factory=list)
+    rating_average: float | None = None
+    rating_count: int = 0
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
@@ -241,6 +243,27 @@ class MessageOut(BaseModel):
     body: str
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class TaskRatingCreate(BaseModel):
+    score: int = Field(ge=1, le=5)
+    comment: str = Field(default="", max_length=1000)
+
+    @field_validator("comment")
+    @classmethod
+    def trim_rating_comment(cls, value: str) -> str:
+        return value.strip()
+
+
+class TaskRatingOut(BaseModel):
+    id: int
+    task_id: int
+    requester_id: int
+    worker_id: int
+    score: int
+    comment: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
 
 class TaskProofOut(BaseModel):
     id: int
