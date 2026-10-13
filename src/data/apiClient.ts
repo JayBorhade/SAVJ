@@ -36,6 +36,17 @@ export type ApiTask = {
   updated_at: string;
 };
 
+export type ApiNotification = {
+  id: number;
+  notification_type: string;
+  title: string;
+  body: string;
+  task_id: number | null;
+  drive_id: number | null;
+  read_at: string | null;
+  created_at: string;
+};
+
 export type ApiTaskRating = {
   id: number;
   task_id: number;
@@ -151,6 +162,9 @@ export const savjApi = {
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
+  listNotifications: (limit = 50) => request<ApiNotification[]>(`/api/v1/me/notifications?limit=${limit}`),
+  markNotificationRead: (id: number) => request<ApiNotification>(`/api/v1/me/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request<{ updated: number }>('/api/v1/me/notifications/read-all', { method: 'POST' }),
   getTaskRating: (id: number) => request<ApiTaskRating | null>(`/api/v1/tasks/${id}/rating`),
   rateTask: (id: number, score: number, comment: string) => request<ApiTaskRating>(`/api/v1/tasks/${id}/rating`, { method: 'POST', body: JSON.stringify({ score, comment }) }),
   listDrives: () => request<Array<{ id: number; organizer_id: number; title: string; description: string; location_text: string; starts_at: string; capacity: number | null; status: string; participant_count: number }>>('/api/v1/drives'),
