@@ -48,18 +48,18 @@ def _decode_b64_json(value: str) -> dict:
     return result
 
 
-def create_access_token(user_id: int) -> tuple[str, int]:
+def create_access_token(user_id: int, token_version: int = 0) -> tuple[str, int]:
     settings = get_settings()
     expires = settings.access_token_expire_minutes * 60
     now = int(time.time())
     header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
-    payload = _b64(json.dumps({"sub": str(user_id), "iat": now, "exp": now + expires}, separators=(",", ":")).encode())
+    payload = _b64(json.dumps({"sub": str(user_id), "ver": token_version, "iat": now, "exp": now + expires}, separators=(",", ":")).encode())
     unsigned = header + "." + payload
     signature = _b64(hmac.new(settings.jwt_secret.encode(), unsigned.encode(), hashlib.sha256).digest())
     return unsigned + "." + signature, expires
 
 
-def decode_access_token(token: str) -> int:
+def decode_access_token_claims(token: str) -> tuple[int, int]:
     settings = get_settings()
     try:
         if not isinstance(token, str) or len(token) > 8192:
@@ -87,10 +87,19 @@ def decode_access_token(token: str) -> int:
             raise ValueError("Invalid expiry claim")
         if expires_at - issued_at > settings.access_token_expire_minutes * 60:
             raise ValueError("Token lifetime exceeds configured maximum")
-        return int(subject)
+        token_version = claims.get("ver", 0)
+        if not isinstance(token_version, int) or isinstance(token_version, bool) or token_version < 0:
+            raise ValueError("Invalid token version")
+        return int(subject), token_version
     except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired access token.",
             headers={"WWW-Authenticate": "Bearer"},
         ) from None
+
+
+def decode_access_token(token: str) -> int:
+    """Compatibility helper returning only the user id from a validated token."""
+    user_id, _ = decode_access_token_claims(token)
+    return user_id
