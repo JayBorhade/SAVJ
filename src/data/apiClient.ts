@@ -36,6 +36,16 @@ export type ApiTask = {
   updated_at: string;
 };
 
+export type ApiTaskRating = {
+  id: number;
+  task_id: number;
+  requester_id: number;
+  worker_id: number;
+  score: number;
+  comment: string;
+  created_at: string;
+};
+
 export type AuthResult = {
   access_token: string | null;
   token_type: string;
@@ -141,6 +151,8 @@ export const savjApi = {
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
+  getTaskRating: (id: number) => request<ApiTaskRating | null>(`/api/v1/tasks/${id}/rating`),
+  rateTask: (id: number, score: number, comment: string) => request<ApiTaskRating>(`/api/v1/tasks/${id}/rating`, { method: 'POST', body: JSON.stringify({ score, comment }) }),
   listDrives: () => request<Array<{ id: number; organizer_id: number; title: string; description: string; location_text: string; starts_at: string; capacity: number | null; status: string; participant_count: number }>>('/api/v1/drives'),
   joinDrive: (id: number) => request<{ status: string }>(`/api/v1/drives/${id}/join`, { method: 'POST' }),
   createDrive: (payload: { title: string; description: string; location_text: string; starts_at: string; capacity: number | null }) =>
@@ -179,4 +191,4 @@ export type ApiDrive = {
 export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
 export type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
 
-export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; tools: string[]; created_at: string };
+export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; tools: string[]; rating_average: number | null; rating_count: number; created_at: string };
