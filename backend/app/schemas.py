@@ -242,6 +242,18 @@ class MessageOut(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+class NotificationOut(BaseModel):
+    id: int
+    notification_type: str
+    title: str
+    body: str
+    task_id: int | None = None
+    drive_id: int | None = None
+    read_at: datetime | None = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TaskRatingCreate(BaseModel):
     score: int = Field(ge=1, le=5)
     comment: str = Field(default="", max_length=1000)
