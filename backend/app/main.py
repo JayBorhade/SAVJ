@@ -203,10 +203,10 @@ def _valid_action_token(db: Session, raw_token: str, purpose: str) -> EmailActio
 def _send_action_email_safely(recipient: str, purpose: str, raw_token: str) -> None:
     try:
         _send_action_email(recipient, purpose, raw_token)
-    except Exception:
-        # Do not log raw tokens or full action URLs. The caller returns an
-        # anti-enumeration response and users can safely request a new email.
-        logger.exception("SAVJ email delivery failed for action %s", purpose)
+    except Exception as exc:
+        # Do not log recipient addresses, raw tokens, action URLs, or SMTP
+        # exception text, which may contain personal data. Users can retry.
+        logger.error("SAVJ email delivery failed for action %s (%s)", purpose, type(exc).__name__)
 
 
 def issue_auth_response(user: User, response: Response) -> TokenOut | JSONResponse:
