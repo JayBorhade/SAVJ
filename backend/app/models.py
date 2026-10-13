@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Index
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, Index, true
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
@@ -17,7 +17,7 @@ class User(Base):
     skills_json: Mapped[str] = mapped_column(Text, default="[]")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
-    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1", nullable=False)
+    is_email_verified: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 class EmailActionToken(Base):
