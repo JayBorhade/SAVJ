@@ -114,21 +114,23 @@ docs/
 
 ## Development Status
 
-- [x] Product concept and feature definition
-- [x] Desktop-first UI direction
-- [x] Onboarding flow
-- [x] Task/worker requirements
-- [x] Radius-based discovery concept
-- [x] Frontend foundation and initial onboarding/task-detail demo flows
-- [ ] Full frontend workflow completion
-- [ ] Backend/API
-- [ ] Database
-- [ ] Map integration
-- [ ] Authentication and KYC workflow
-- [ ] Task lifecycle
-- [ ] Community module
-- [ ] Automated workflow tests and verified CI checks
-- [ ] Deployment
+The integrated full-stack implementation is present on the stacked Phase 1–16 branches; these branches are not yet consolidated into `main` and the service is not deployed.
+
+- [x] Desktop-first React/TypeScript frontend and onboarding
+- [x] FastAPI API, SQLAlchemy models, authentication and profile
+- [x] Task creation, discovery, lifecycle, worker directory and messaging APIs
+- [x] Community drive and participation APIs
+- [x] Private before/after proof upload and authorized retrieval
+- [x] Radius-based task filtering and map UI
+- [x] Alembic migration chain and Docker Compose files
+- [x] Automated frontend/backend/container CI on the phase stack
+- [x] Security audit, dependency audit, CodeQL and secret scanning workflows
+- [ ] Resolve the Phase 2 stacked-PR merge conflict and integrate phases in order
+- [ ] Commit a reproducible `package-lock.json` and verify the final integrated tree
+- [ ] Replace localStorage token persistence with a reviewed production session lifecycle
+- [ ] Configure shared rate limiting, production object storage, malware scanning and retention
+- [ ] Verify production hosting, HTTPS, secrets, backups, monitoring and logs
+- [ ] Complete browser end-to-end, staging DAST and independent penetration testing
 
 ## Security
 
@@ -143,4 +145,6 @@ SAVJ is being developed as a Community Engagement Project by students of the Art
 
 ## Current implementation note
 
-The GitHub branch `phase-1/stabilize-and-flows` contains the current Phase 1 onboarding and task-detail work. The first-run onboarding captures a name, area and participation purpose; demo tasks and joined drives are saved in the current browser using local storage. Dashboard impact values are labelled as sample data. This is still a frontend prototype: local browser storage is not a backend, and task acceptance does not notify a requester or enforce authorization. See [Phase 1 audit criteria](docs/PHASE_1_AUDIT.md) for remaining work.
+The complete implementation is organized as stacked branches from `phase-1/stabilize-and-flows` through `phase-16/launch-hardening`, with a documentation-only Phase 17 verification branch and security PR #18 targeting Phase 16. Later-phase backend, database, API integration, task lifecycle, community drives, messaging, proof uploads, geospatial discovery, worker directory, map UI, Docker, and security hardening exist on the phase stack; they are not yet integrated into `main` or deployed.
+
+Important limitations: Phase 2 is reported as a dirty/non-mergeable PR and must be resolved before safely integrating later phases. A committed npm lockfile is missing. The frontend stores the bearer access token in localStorage, login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
