@@ -74,6 +74,7 @@ def test_logout_revokes_previous_access_tokens():
 def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
     from app import main as main_module
 
+    register("cookie@example.com", "Cookie User")
     monkeypatch.setattr(main_module, "_PRODUCTION", True)
     monkeypatch.setattr(main_module.settings, "app_env", "production")
     monkeypatch.setattr(main_module.settings, "cors_origins", "https://app.example.com")
@@ -81,11 +82,10 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
     secure_client.cookies.clear()
     try:
         response = secure_client.post(
-            "/api/v1/auth/register",
-            json={"email": "cookie@example.com", "password": "test-password-123",
-                  "display_name": "Cookie User", "locality": "Pune", "purpose": "Both"},
+            "/api/v1/auth/login",
+            json={"email": "cookie@example.com", "password": "test-password-123"},
         )
-        assert response.status_code == 201, response.text
+        assert response.status_code == 200, response.text
         assert response.json()["access_token"] is None
         set_cookie = response.headers.get("set-cookie", "")
         assert "HttpOnly" in set_cookie and "Secure" in set_cookie and "SameSite=lax" in set_cookie
