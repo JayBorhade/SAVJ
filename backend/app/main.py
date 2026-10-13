@@ -232,7 +232,7 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 Database = Annotated[Session, Depends(get_db)]
 
 def user_output(user: User) -> UserOut:
-    return UserOut(id=user.id, email=user.email, display_name=user.display_name, locality=user.locality, purpose=user.purpose, skills=json.loads(user.skills_json), created_at=user.created_at)
+    return UserOut(id=user.id, email=user.email, display_name=user.display_name, locality=user.locality, purpose=user.purpose, skills=json.loads(user.skills_json), tools=json.loads(user.tools_json), created_at=user.created_at)
 
 def task_access(db: Session, task_id: int, user_id: int) -> Task:
     task = db.get(Task, task_id)
@@ -254,6 +254,7 @@ def register(payload: UserCreate, response: Response, db: Database) -> TokenOut:
         locality=payload.locality.strip(),
         purpose=payload.purpose,
         skills_json=json.dumps(sorted({s.strip() for s in payload.skills if s.strip()})),
+        tools_json=json.dumps(sorted({t.strip() for t in payload.tools if t.strip()})),
         is_email_verified=not _PRODUCTION,
     )
     db.add(user)
@@ -362,6 +363,7 @@ def update_me(payload: UserUpdate, user: CurrentUser, db: Database) -> UserOut:
     for key, value in payload.model_dump(exclude_unset=True).items():
         if value is None: continue
         if key == "skills": user.skills_json = json.dumps(sorted({item.strip() for item in value if item.strip()}))
+        elif key == "tools": user.tools_json = json.dumps(sorted({item.strip() for item in value if item.strip()}))
         else: setattr(user, key, value.strip() if isinstance(value, str) else value)
     db.commit()
     db.refresh(user)
@@ -369,7 +371,7 @@ def update_me(payload: UserUpdate, user: CurrentUser, db: Database) -> UserOut:
 
 @app.post("/api/v1/tasks", response_model=TaskOut, status_code=201)
 def create_task(payload: TaskCreate, user: CurrentUser, db: Database) -> Task:
-    task = Task(requester_id=user.id, title=payload.title.strip(), description=payload.description.strip(), category=payload.category.strip(), location_text=payload.location_text.strip(), latitude=payload.latitude, longitude=payload.longitude, budget_minor_units=payload.budget_rupees * 100, scheduled_at=payload.scheduled_at, status="Open")
+    task = Task(requester_id=user.id, title=payload.title.strip(), description=payload.description.strip(), category=payload.category.strip(), required_skills_json=json.dumps(payload.required_skills), required_tools_json=json.dumps(payload.required_tools), location_text=payload.location_text.strip(), latitude=payload.latitude, longitude=payload.longitude, budget_minor_units=payload.budget_rupees * 100, scheduled_at=payload.scheduled_at, status="Open")
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -434,6 +436,15 @@ def transition(db: Session, task: Task, target: str, actor: User) -> Task:
         if actor.id == task.requester_id: raise HTTPException(status_code=403, detail="Requesters cannot accept their own task.")
         if actor.purpose == "Requester": raise HTTPException(status_code=403, detail="Your account is not enabled for worker tasks.")
         if task.worker_id is not None: raise HTTPException(status_code=409, detail="This task has already been accepted.")
+        worker_skills = {item.casefold() for item in json.loads(actor.skills_json)}
+        worker_tools = {item.casefold() for item in json.loads(actor.tools_json)}
+        missing_skills = [item for item in task.required_skills if item.casefold() not in worker_skills]
+        missing_tools = [item for item in task.required_tools if item.casefold() not in worker_tools]
+        if missing_skills or missing_tools:
+            missing = []
+            if missing_skills: missing.append("skills: " + ", ".join(missing_skills))
+            if missing_tools: missing.append("tools: " + ", ".join(missing_tools))
+            raise HTTPException(status_code=409, detail="Your profile does not meet this task's mandatory requirements (" + "; ".join(missing) + ").")
         task.worker_id = actor.id
     elif target == "In progress":
         if task.status == "Awaiting approval":
@@ -544,7 +555,7 @@ def list_workers(db: Database, user: CurrentUser, search: str | None = None, ski
         skills = json.loads(person.skills_json)
         if skill and not any(skill.casefold() in item.casefold() for item in skills):
             continue
-        results.append(WorkerOut(id=person.id, display_name=person.display_name, locality=person.locality, purpose=person.purpose, skills=skills, created_at=person.created_at))
+        results.append(WorkerOut(id=person.id, display_name=person.display_name, locality=person.locality, purpose=person.purpose, skills=skills, tools=json.loads(person.tools_json), created_at=person.created_at))
     return results
 
 @app.get("/api/v1/me/impact")
