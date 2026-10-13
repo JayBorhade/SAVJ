@@ -8,7 +8,7 @@ import {
 import './App.css';
 import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
 import { createBrowserTaskRepository } from './data/taskRepository';
-import { clearAccessToken, getAccessToken, savjApi, type ApiTask, type ApiUser } from './data/apiClient';
+import { clearAccessToken, getAccessToken, savjApi, type ApiTask, type ApiTaskRating, type ApiUser } from './data/apiClient';
 import LiveCommunity from './components/LiveCommunity';
 import LiveMessages from './components/LiveMessages';
 import LiveImpact from './components/LiveImpact';
@@ -90,6 +90,11 @@ export default function App() {
   const [onboardingSkills, setOnboardingSkills] = useState<string[]>([]);
   const [tasks, setTasks] = useState<Task[]>(() => { try { const repository=createBrowserTaskRepository(); return readLocalStorage('savj.tasks') ? repository.list() : initialTasks; } catch { return initialTasks; } });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskRating, setTaskRating] = useState<ApiTaskRating | null>(null);
+  const [ratingScore, setRatingScore] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
   const [beforeProofName, setBeforeProofName] = useState('');
   const [afterProofName, setAfterProofName] = useState('');
   const [beforeProofFile, setBeforeProofFile] = useState<File | null>(null);
@@ -257,6 +262,17 @@ export default function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not reset your password.'); }
     finally { setAuthActionBusy(false); }
   };
+  const submitTaskRating = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedTask) return;
+    setRatingBusy(true);
+    try {
+      const rating = await savjApi.rateTask(selectedTask.id, ratingScore, ratingComment);
+      setTaskRating(rating);
+      setNotice('Thanks — your rating has been recorded.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not submit this rating.'); }
+    finally { setRatingBusy(false); }
+  };
   const signOut = async () => {
     try { if (backendConnected) await savjApi.logout(); }
     catch { /* Always clear local UI state even if the server session has already expired. */ }
@@ -291,6 +307,21 @@ export default function App() {
     setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskScheduledAt(''); setTaskCoordinates(null);
     setNotice('Your task has been added to the local demo feed.');
   };
+
+  useEffect(() => {
+    if (!backendConnected || !apiUser || !selectedTask || selectedTask.status !== 'Completed' || selectedTask.requesterId !== apiUser.id) {
+      setTaskRating(null);
+      setRatingLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRatingLoading(true);
+    void savjApi.getTaskRating(selectedTask.id)
+      .then((rating) => { if (!cancelled) setTaskRating(rating); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load task rating.'); })
+      .finally(() => { if (!cancelled) setRatingLoading(false); });
+    return () => { cancelled = true; };
+  }, [backendConnected, apiUser?.id, selectedTask?.id, selectedTask?.status]);
 
   const navItems = [
     { label: 'Overview', icon: Activity },
@@ -404,6 +435,7 @@ export default function App() {
       {selectedTask && <div className="modal-backdrop" onMouseDown={(e)=>{if(e.target===e.currentTarget)setSelectedTask(null)}}><section className="post-modal"><div className="modal-heading"><div><span className="eyebrow">TASK DETAILS · {backendConnected ? 'LIVE' : 'DEMO'}</span><h2>{selectedTask.title}</h2><p>{selectedTask.category} · {selectedTask.distance} km away</p></div><button type="button" className="icon-button" onClick={()=>setSelectedTask(null)} aria-label="Close task details"><X size={20}/></button></div><p>{selectedTask.description}</p><div className="task-detail-meta"><span><MapPin size={15}/> {selectedTask.location}</span><span><CalendarDays size={15}/> {selectedTask.date}</span><strong>₹{selectedTask.budget.toLocaleString('en-IN')}</strong></div><p><strong>Required skills:</strong> {selectedTask.skills.length ? selectedTask.skills.join(', ') : 'None specified'}</p><p><strong>Required tools:</strong> {(selectedTask.tools || []).length ? (selectedTask.tools || []).join(', ') : 'None specified'}</p><p><strong>Status:</strong> {selectedTask.status}</p>
       {backendConnected && selectedTask.status==='Awaiting approval' && <TaskProofViewer taskId={selectedTask.id} onNotice={setNotice} />}
       {selectedTask.status==='In progress'&&(!backendConnected||(apiUser&&selectedTask.workerId===apiUser.id))&&<div className="proof-fields"><label>Before photo (required)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(e)=>{const file=e.target.files?.[0]||null;setBeforeProofFile(file);setBeforeProofName(file?.name||'');}}/></label><label>After photo (required)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(e)=>{const file=e.target.files?.[0]||null;setAfterProofFile(file);setAfterProofName(file?.name||'');}}/></label><small>Images upload to private backend storage (JPEG, PNG or WebP; max 8 MB each) when signed in. Demo mode only checks file selection.</small></div>}
+      {selectedTask.status==='Completed'&&backendConnected&&apiUser&&selectedTask.requesterId===apiUser.id&&<section className="section-card task-rating-panel"><h3>Rate your experience</h3>{ratingLoading?<p>Loading rating…</p>:taskRating?<><p><strong>Your rating:</strong> {'★'.repeat(taskRating.score)} ({taskRating.score}/5)</p>{taskRating.comment&&<p>{taskRating.comment}</p>}<small>One rating is allowed per completed task.</small></>:<form onSubmit={submitTaskRating}><label>Rating<select value={ratingScore} onChange={(event)=>setRatingScore(Number(event.target.value))}><option value={5}>5 — Excellent</option><option value={4}>4 — Good</option><option value={3}>3 — Okay</option><option value={2}>2 — Poor</option><option value={1}>1 — Very poor</option></select></label><label>Comment (optional)<textarea value={ratingComment} onChange={(event)=>setRatingComment(event.target.value)} maxLength={1000} rows={3} placeholder="Share a short, respectful review."/></label><button type="submit" className="primary-button" disabled={ratingBusy}>{ratingBusy?'Submitting…':'Submit rating'}</button></form>}</section>}
       <div className="demo-disclaimer"><ShieldCheck size={15}/> Task actions use the backend when connected. Proof uploads are private and participant-authorized; requester notifications and KYC verification are not implemented.</div>
       <div className="onboarding-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedTask(null)}>Close</button>
       {selectedTask.status!=='Completed'&&selectedTask.status!=='Cancelled'&&(!backendConnected||(apiUser&&(selectedTask.requesterId===apiUser.id||selectedTask.workerId===apiUser.id)))&&<button type="button" className="secondary-button" onClick={async()=>{if(!window.confirm('Cancel this task? This cannot be undone after cancellation.'))return;if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'cancel'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task cancelled on the SAVJ backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not cancel task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Cancelled');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task cancelled in this browser demo.');}}>Cancel task</button>}
