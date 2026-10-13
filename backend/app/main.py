@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import get_settings
@@ -151,7 +151,12 @@ def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Quer
         raise HTTPException(status_code=422, detail="Latitude and longitude must be supplied together.")
     if radius_km is not None and latitude is None:
         raise HTTPException(status_code=422, detail="A radius requires latitude and longitude.")
-    query = select(Task)
+    # Open tasks are discoverable to authenticated users. Non-open tasks are
+    # visible only to their requester and assigned worker, even when callers
+    # manually request a private status through query parameters.
+    query = select(Task).where(
+        or_(Task.status == "Open", Task.requester_id == user.id, Task.worker_id == user.id)
+    )
     if status_filter:
         if status_filter not in {"Open", "Accepted", "In progress", "Awaiting approval", "Completed", "Cancelled"}: raise HTTPException(status_code=422, detail="Unsupported task status.")
         query = query.where(Task.status == status_filter)
