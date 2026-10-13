@@ -186,6 +186,13 @@ def get_task(task_id: int, user: CurrentUser, db: Database) -> Task:
     return task
 
 def transition(db: Session, task: Task, target: str, actor: User) -> Task:
+    # Always re-read and lock the latest row before validating a transition.
+    # This serializes status changes and prevents duplicate completion events
+    # when two requests race (PostgreSQL production path).
+    locked_task = db.scalar(select(Task).where(Task.id == task.id).with_for_update())
+    if not locked_task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    task = locked_task
     allowed = {"Open":{"Accepted","Cancelled"},"Accepted":{"In progress","Cancelled"},"In progress":{"Awaiting approval","Cancelled"},"Awaiting approval":{"Completed","In progress"},"Completed":set(),"Cancelled":set()}
     if target not in allowed.get(task.status, set()): raise HTTPException(status_code=409, detail=f"Cannot transition task from {task.status} to {target}.")
     if target == "Accepted":
