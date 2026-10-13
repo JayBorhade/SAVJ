@@ -91,3 +91,5 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .notification-item span { font-size: 11px; line-height: 1.45; color: #68776c; }
 .notification-item small { font-size: 10px; color: #889389; }
 @media (max-width: 600px) { .notification-popover { right: -46px; } }
+
+.worker-tools { margin-top: 8px; color: var(--muted-text, #65736a); font-size: 0.86rem; line-height: 1.45; }

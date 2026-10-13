@@ -1,4 +1,5 @@
 import os
+import stat
 import tempfile
 from io import BytesIO
 from PIL import Image
@@ -108,6 +109,25 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
         monkeypatch.setattr(main_module, "_PRODUCTION", False)
         monkeypatch.setattr(main_module.settings, "app_env", "test")
         monkeypatch.setattr(main_module.settings, "cors_origins", "http://localhost:5173,http://127.0.0.1:5173")
+
+
+def test_task_creation_rate_limit_returns_429():
+    from app import main as main_module
+
+    token, _ = register("task-limit@example.com", "Task Limit")
+    original_env = main_module.settings.app_env
+    main_module.settings.app_env = "development"
+    main_module._auth_attempts.clear()
+    try:
+        for _ in range(10):
+            response = client.post("/api/v1/tasks", headers=auth(token), json={})
+            assert response.status_code == 422
+        limited = client.post("/api/v1/tasks", headers=auth(token), json={})
+        assert limited.status_code == 429
+        assert "retry-after" in limited.headers
+    finally:
+        main_module._auth_attempts.clear()
+        main_module.settings.app_env = original_env
 
 
 def test_email_verification_and_password_reset_tokens_are_single_use(monkeypatch):
@@ -229,6 +249,8 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     assert any(n["notification_type"] == "task_started" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 409
     upload_pair(task["id"], worker_token)
+    assert stat.S_IMODE(main_module.UPLOAD_DIR.stat().st_mode) == 0o700
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in main_module.UPLOAD_DIR.iterdir() if path.is_file())
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
     assert any(n["notification_type"] == "task_submitted" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     # Requesters can ask for rework; a new proof pair is required for resubmission.

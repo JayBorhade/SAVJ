@@ -44,8 +44,8 @@ Workers choose a preferred radius. SAVJ displays eligible tasks within that dist
 ### 🛠️ Skill & Tool Requirements
 Task creators define mandatory skills and tools. A worker can accept a task only when mandatory requirements are satisfied; otherwise the **Accept Task** action is disabled.
 
-### 🪪 KYC & Trust
-KYC verification supports safer paid/skilled work. Profiles can show verification, skills, ratings, and task history.
+### 🪪 KYC & Trust (not yet live)
+The current UI and product design include a KYC concept, but identity verification is not implemented. Do not treat a profile, skill list, rating, or task history as verified identity. Before launch, integrate an approved identity-verification provider or a documented manual-review process with consent, reviewer permissions, audit history, secure document handling, and retention/deletion rules.
 
 ### 📸 Completion Proof
 Workers submit before/after evidence. Requesters review and approve completed work.
@@ -54,7 +54,7 @@ Workers submit before/after evidence. Requesters review and approve completed wo
 Discover and join plantation drives, waterbody cleanups, waste collection, and neighborhood environmental activities.
 
 ### 🏆 Impact Tracking
-Track tasks completed, volunteer hours, trees planted, waste collected, drives joined, and achievements.
+Track server-verified task completions, joined community drives, worker ratings, and earned community medals. Volunteer hours, tree counts, and waste weights are not yet collected by the system.
 
 ## Key User Flows
 
@@ -130,9 +130,12 @@ The integrated full-stack implementation is present on the stacked Phase 1–16 
 - [x] Use HttpOnly production access cookies, Origin checks, and server-side logout revocation
 - [x] Add email verification and password recovery with hashed, expiring, single-use tokens and SMTP delivery
 - [x] Enforce task skills/tools, requester ratings, worker rating summaries, and verified-activity community medals
+- [x] Add user-scoped in-app notifications for task changes, messages, and drive participation
+- [x] Run PostgreSQL migration and API smoke tests in CI
 - [ ] Integrate the full phase stack into `main` in dependency order
 - [ ] Add refresh-token rotation and MFA/managed identity-provider integration
-- [ ] Configure shared rate limiting, production object storage, malware scanning and retention
+- [ ] Configure shared/distributed rate limiting, managed private object storage, malware scanning and retention
+- [ ] Integrate compliant KYC and payment/payout providers; define settlement, refunds and disputes before enabling paid work
 - [ ] Verify production hosting, HTTPS, secrets, backups, monitoring and logs
 - [ ] Complete browser end-to-end, staging DAST and independent penetration testing
 

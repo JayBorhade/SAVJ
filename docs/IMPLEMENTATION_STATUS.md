@@ -21,7 +21,8 @@
 - Production configuration rejects weak placeholder JWT secrets, SQLite, wildcard CORS, and invalid production origins.
 - Proof uploads are size-limited, decoded/re-encoded, constrained by format/frame/pixel limits, and stored outside the frontend's public assets.
 - Task detail and task-list visibility now restrict non-open tasks to the requester and assigned worker. Task acceptance and drive capacity checks use PostgreSQL row locks to reduce concurrent double assignment/overbooking.
-- The login/register limiter is process-local defense-in-depth only; it is not a distributed production rate limiter.
+- Auth/email actions, task creation, messaging, proof uploads, ratings, and drive joins have bounded process-local throttles; they are defense-in-depth and not distributed production rate limits.
+- Proof files are created atomically with restrictive file permissions; the storage directory is tightened to mode 0700 and files to 0600.
 
 ### Database and deployment
 - SQLAlchemy models and Alembic migrations 0001–0008 cover the schema baseline, task coordinates, unique completion impact, token-version revocation, email action tokens, task requirements/tools, and task ratings. Dockerfiles and Docker Compose include PostgreSQL and a persistent private-upload volume.
@@ -31,9 +32,8 @@
 ## Verification state
 
 - The lockfile-generation workflow successfully ran `npm ci --ignore-scripts` and `npm audit --audit-level=high`; a committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`.
-- Earlier security runs passed npm/pip dependency audits, CodeQL, and Gitleaks. The newest task-rating, email-token, schema, and frontend changes are under re-verification; use checks on the exact final head, not earlier green runs.
-- No local shell/browser runtime, live deployment, staging DAST, or independent penetration test was available in this remote-only pass. Those are explicitly **not verified**.
-- No local browser runtime, live deployment, real SMTP delivery, KYC/payment provider, staging DAST, or independent penetration test was available in this remote-only pass. These remain explicitly unverified.
+- The code head `ba3b32cc476d51b2380b7e95edcf1d486827889c` passed frontend tests/typecheck/lint/build, backend migration/API tests, the PostgreSQL migration chain and API smoke test, both container builds, npm/pip audits, CodeQL, and Gitleaks. Subsequent profile-tools UI and documentation updates require checks on the final integration PR head before merge.
+- No live deployment, real SMTP delivery, KYC/payment provider, production storage, browser end-to-end run, staging DAST, or independent penetration test was available in this remote-only pass. These remain explicitly unverified.
 
 ## Integration status and critical blocker
 
@@ -49,6 +49,8 @@ Security PR #18 targets `phase-16/launch-hardening`, not `main`. Phase 17 verifi
 - [x] Generate and commit `package-lock.json`; use `npm ci` for repeatable CI installs and audits.
 - [x] Enforce required task skills/tools and one requester rating per completed task; derive community medals from verified activity.
 - [x] Deliver user-scoped in-app notifications for task state changes, messages, and drive participation, with read-state endpoints.
+- [x] Verify the Alembic chain and core task/proof/rating/notification/drive workflows against PostgreSQL in CI.
+- [x] Add bounded process-local throttles for task creation, messaging, proof uploads, ratings, and drive joins; atomically create private proof files.
 - [ ] Consolidate the full phase stack into `main` in dependency order.
 - [ ] Re-run all CI/security workflows on the final integrated tree.
 - [x] Use HttpOnly production access cookies, SameSite protection, Origin validation for cookie-authenticated writes, and server-side token-version revocation on logout.

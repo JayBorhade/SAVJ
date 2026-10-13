@@ -5,6 +5,7 @@ import secrets
 import smtplib
 import ssl
 import logging
+import re
 from email.message import EmailMessage
 from pathlib import Path
 from uuid import uuid4
@@ -47,7 +48,8 @@ async def security_headers(request, call_next):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 # Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
-_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600)}
+_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600), "/api/v1/tasks": (10, 60), "/api/v1/drives": (5, 60)}
+_ROUTE_LIMITS = [(re.compile(r"/api/v1/tasks/\d+/messages"), (30, 60)), (re.compile(r"/api/v1/tasks/\d+/rating"), (5, 3600)), (re.compile(r"/api/v1/tasks/\d+/proofs/(before|after)"), (10, 60)), (re.compile(r"/api/v1/drives/\d+/join"), (20, 60))]
 _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
 
@@ -56,6 +58,8 @@ async def limit_auth_attempts(request: Request, call_next):
     if settings.app_env.lower() in {"test", "testing"}:
         return await call_next(request)
     policy = _AUTH_LIMITS.get(request.url.path)
+    if policy is None:
+        policy = next((limit for pattern, limit in _ROUTE_LIMITS if pattern.fullmatch(request.url.path)), None)
     if request.method == "POST" and policy:
         ip = request.client.host if request.client else "unknown"
         maximum, window = policy
@@ -781,10 +785,19 @@ async def upload_task_proof(
     destination = (UPLOAD_DIR / storage_name).resolve()
     if destination.parent != UPLOAD_DIR:
         raise HTTPException(status_code=400, detail="Invalid upload path.")
-    destination.write_bytes(data)
+    file_descriptor: int | None = None
     try:
-        os.chmod(destination, 0o600)
+        # Tighten an existing mounted directory too; mkdir(mode=...) does not
+        # change permissions when the directory already exists.
+        os.chmod(UPLOAD_DIR, 0o700)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        file_descriptor = os.open(destination, flags, 0o600)
+        with os.fdopen(file_descriptor, "wb") as stored_file:
+            file_descriptor = None
+            stored_file.write(data)
     except OSError:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
         destination.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Private proof storage permissions could not be secured.") from None
     proof = TaskProof(task_id=task.id, uploader_id=user.id, proof_kind=proof_kind,
