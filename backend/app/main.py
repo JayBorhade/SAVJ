@@ -5,6 +5,7 @@ import secrets
 import smtplib
 import ssl
 import logging
+import re
 from email.message import EmailMessage
 from pathlib import Path
 from uuid import uuid4
@@ -47,7 +48,8 @@ async def security_headers(request, call_next):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 # Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
-_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600)}
+_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600), "/api/v1/tasks": (10, 60), "/api/v1/drives": (5, 60)}
+_ROUTE_LIMITS = [(re.compile(r"/api/v1/tasks/\\d+/messages"), (30, 60)), (re.compile(r"/api/v1/tasks/\\d+/rating"), (5, 3600)), (re.compile(r"/api/v1/tasks/\\d+/proofs/(before|after)"), (10, 60)), (re.compile(r"/api/v1/drives/\\d+/join"), (20, 60))]
 _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
 
@@ -56,6 +58,8 @@ async def limit_auth_attempts(request: Request, call_next):
     if settings.app_env.lower() in {"test", "testing"}:
         return await call_next(request)
     policy = _AUTH_LIMITS.get(request.url.path)
+    if policy is None:
+        policy = next((limit for pattern, limit in _ROUTE_LIMITS if pattern.fullmatch(request.url.path)), None)
     if request.method == "POST" and policy:
         ip = request.client.host if request.client else "unknown"
         maximum, window = policy
