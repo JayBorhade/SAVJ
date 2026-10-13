@@ -1,4 +1,5 @@
 import os
+import stat
 import tempfile
 from io import BytesIO
 from PIL import Image
@@ -229,6 +230,8 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     assert any(n["notification_type"] == "task_started" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 409
     upload_pair(task["id"], worker_token)
+    assert stat.S_IMODE(main_module.UPLOAD_DIR.stat().st_mode) == 0o700
+    assert all(stat.S_IMODE(path.stat().st_mode) == 0o600 for path in main_module.UPLOAD_DIR.iterdir() if path.is_file())
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
     assert any(n["notification_type"] == "task_submitted" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     # Requesters can ask for rework; a new proof pair is required for resubmission.
