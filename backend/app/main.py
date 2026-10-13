@@ -254,7 +254,13 @@ def list_drives(db: Database, user: CurrentUser, limit: int = Query(default=30, 
 
 @app.post("/api/v1/drives/{drive_id}/join", status_code=201)
 def join_drive(drive_id: int, user: CurrentUser, db: Database) -> dict[str, str]:
-    drive = db.get(CommunityDrive, drive_id)
+    # Serialize capacity checks on PostgreSQL so concurrent joins cannot
+    # overbook the same drive. SQLite ignores FOR UPDATE; production uses Postgres.
+    drive = db.scalar(
+        select(CommunityDrive)
+        .where(CommunityDrive.id == drive_id)
+        .with_for_update()
+    )
     if not drive or drive.status != "Open": raise HTTPException(status_code=404, detail="Open community drive not found.")
     existing = db.scalar(select(DriveParticipation).where(DriveParticipation.drive_id == drive_id, DriveParticipation.user_id == user.id))
     if existing: return {"status":"already_joined"}
