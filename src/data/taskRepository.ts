@@ -13,6 +13,7 @@ export type SavjTaskRecord = {
   budget: number;
   date: string;
   skills: string[];
+  tools?: string[];
   status: import('../domain/taskWorkflow').TaskStatus;
   icon: 'leaf' | 'tree' | 'water' | 'recycle';
   description: string;
@@ -39,6 +40,7 @@ function isSavjTaskRecord(value: unknown): value is SavjTaskRecord {
     && typeof task.budget === 'number' && Number.isFinite(task.budget) && task.budget >= 0
     && typeof task.date === 'string'
     && Array.isArray(task.skills) && task.skills.every((skill) => typeof skill === 'string')
+    && (task.tools === undefined || (Array.isArray(task.tools) && task.tools.every((tool) => typeof tool === 'string')))
     && typeof task.status === 'string' && validStatuses.includes(task.status)
     && typeof task.icon === 'string' && validIcons.includes(task.icon)
     && typeof task.description === 'string';
