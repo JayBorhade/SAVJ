@@ -75,7 +75,7 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(() => readLocalStorage('savj.onboardingDone') === 'true');
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingSkills, setOnboardingSkills] = useState<string[]>([]);
-  const [tasks, setTasks] = useState<Task[]>(() => { try { const repository=createBrowserTaskRepository(); return localStorage.getItem('savj.tasks') ? repository.list() : initialTasks; } catch { return initialTasks; } });
+  const [tasks, setTasks] = useState<Task[]>(() => { try { const repository=createBrowserTaskRepository(); return readLocalStorage('savj.tasks') ? repository.list() : initialTasks; } catch { return initialTasks; } });
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [beforeProofName, setBeforeProofName] = useState('');
   const [afterProofName, setAfterProofName] = useState('');
@@ -89,7 +89,7 @@ export default function App() {
   const [category, setCategory] = useState('All tasks');
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('savj.joinedDrives') || '[]') as string[]; } catch { return []; } });
+  const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(readLocalStorage('savj.joinedDrives', '[]')) as string[]; } catch { return []; } });
   useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { /* Browser storage may be disabled; the UI remains usable for this session. */ } }, [tasks]);
   useEffect(() => { writeLocalStorage('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
   useEffect(() => { if (profileName.trim()) writeLocalStorage('savj.profileName', profileName.trim()); }, [profileName]);
