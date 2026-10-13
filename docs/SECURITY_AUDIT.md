@@ -31,12 +31,13 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 | 17 | Source maps | Build/deployment configuration was not validated in a built artifact. | Do not publish production source maps publicly unless access-controlled and intentionally required. |
 | 18 | Default credentials | Production rejects weak/default JWT secrets; no seeded default account was identified in reviewed files. | Check deployment, database, and admin credentials outside Git before release. |
 | 19 | Sensitive logs | No explicit credential logging was identified in inspected excerpts; runtime/deployment logs were not available. | Redact Authorization headers, passwords, tokens, personal data, and uploaded content; review host logs. |
-| 20 | Vulnerable dependencies | Dependency ranges exist; installed dependency tree and advisories were not run in this remote review. | CI now includes dependency/security checks; fix high/critical findings and pin reproducible lockfiles. |
+| 20 | Vulnerable dependencies | Frontend dependency audit initially found vulnerable Tailwind/Vite/React Router chains and the Python audit found pytest 8.4.2 vulnerable; package ranges were upgraded (Tailwind v4, Vite 6, React Router 7, pytest 9.0.3+) and CI is being rerun. | Verify all audit jobs pass and commit a reproducible npm lockfile before release. |
 
 ## Release gates
 
 - [ ] Resolve the stacked PR dependency / phase-2 conflict and integrate the intended backend before applying the audit to the default branch.
-- [ ] Run backend tests, frontend lint/typecheck/build, dependency audits, CodeQL, and secret scanning on the final merged tree.
+- [ ] Run backend tests, frontend lint/typecheck/build, dependency audits, CodeQL, and secret scanning on the final merged tree; ensure all are green after dependency upgrades.
+- [ ] Commit a generated package-lock.json so frontend dependency resolution and audit results are reproducible.
 - [ ] Configure shared/distributed gateway rate limiting for all instances and add tests for limits, uploads, and cross-account authorization.
 - [ ] Add MFA/account recovery and email verification only with a defined provider and secure token lifecycle.
 - [ ] Verify proof-upload malware handling, private storage permissions, retention, and deletion.
