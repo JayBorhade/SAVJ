@@ -28,7 +28,7 @@ Users can:
 - Post environmental tasks with photos, descriptions, budgets, skills, tools, location, and schedule.
 - Discover nearby tasks using a configurable search radius.
 - Join environmental community drives.
-- Build profiles around skills, KYC verification, contributions, ratings, and impact.
+- Build profiles around skills, task history, contributions, and impact; KYC verification and ratings are not yet live.
 - Submit before/after completion proof.
 - Communicate through task-based messaging.
 - Track environmental contributions such as volunteer hours, waste collected, and trees planted.
@@ -59,7 +59,7 @@ Track tasks completed, volunteer hours, trees planted, waste collected, drives j
 ## Key User Flows
 
 **New user:**  
-Splash → Welcome → Purpose → Location → Skills (worker) → KYC (if applicable) → Radius → Interests → Home
+Splash → Welcome → Purpose → Location → Skills (worker) → KYC (planned, not connected) → Radius → Interests → Home
 
 **Worker:**  
 Explore → Radius → Task → Requirement Check → Accept → Chat → Complete → Proof → Approval → Rating
@@ -128,8 +128,9 @@ The integrated full-stack implementation is present on the stacked Phase 1–16 
 - [x] Resolve the Phase 2 branch conflict and verify its CI
 - [x] Commit `package-lock.json` and use `npm ci` for frontend CI/container builds
 - [x] Use HttpOnly production access cookies, Origin checks, and server-side logout revocation
+- [x] Add email verification and password recovery with hashed, expiring, single-use tokens and SMTP delivery
 - [ ] Integrate the full phase stack into `main` in dependency order
-- [ ] Add refresh-token rotation, email verification/password recovery, and MFA with configured providers
+- [ ] Add refresh-token rotation and MFA/managed identity-provider integration
 - [ ] Configure shared rate limiting, production object storage, malware scanning and retention
 - [ ] Verify production hosting, HTTPS, secrets, backups, monitoring and logs
 - [ ] Complete browser end-to-end, staging DAST and independent penetration testing
@@ -149,4 +150,4 @@ SAVJ is being developed as a Community Engagement Project by students of the Art
 
 The complete implementation is organized as stacked branches from `phase-1/stabilize-and-flows` through `phase-16/launch-hardening`, with a documentation-only Phase 17 verification branch and security PR #18 targeting Phase 16. Later-phase backend, database, API integration, task lifecycle, community drives, messaging, proof uploads, geospatial discovery, worker directory, map UI, Docker, and security hardening exist on the phase stack; they are not yet integrated into `main` or deployed.
 
-Important limitations: Phase 2's merge conflict has been resolved in its branch and CI passed, but the stacked phase PRs are still open and the implementation is not yet consolidated into `main`. A committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`. Production builds use HttpOnly access cookies with Origin checks and logout revocation; refresh-token rotation, email verification/password recovery, and MFA are not yet implemented. Login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
+Important limitations: Phase 2's merge conflict has been resolved in its branch and CI passed, but the stacked phase PRs are still open and the implementation is not yet consolidated into `main`. A committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`. Production builds use HttpOnly access cookies with Origin checks and logout revocation. Email verification/password recovery now use hashed, expiring, single-use tokens and SMTP delivery hooks, but real SMTP credentials and acceptance testing are still required; refresh-token rotation and MFA remain unimplemented. Login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
