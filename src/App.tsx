@@ -95,7 +95,7 @@ export default function App() {
   useEffect(() => { if (profileName.trim()) writeLocalStorage('savj.profileName', profileName.trim()); }, [profileName]);
   useEffect(() => { if (profileArea.trim()) writeLocalStorage('savj.profileArea', profileArea.trim()); }, [profileArea]);
   useEffect(() => {
-    if (!getAccessToken()) return;
+    if (!getAccessToken() && !import.meta.env.PROD) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -104,7 +104,11 @@ export default function App() {
         setApiUser(user); setBackendConnected(true); setProfileName(user.display_name); setProfileArea(user.locality); setPurpose(user.purpose);
         setTasks(apiTasks.map(fromApiTask));
         setNotice('Connected to SAVJ backend. Tasks are now loaded from the server.');
-      } catch (error) { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not restore your SAVJ session.'); }
+      } catch (error) {
+        if (cancelled) return;
+        if (!getAccessToken() && error instanceof Error && error.message === 'Authentication required.') return;
+        setNotice(error instanceof Error ? error.message : 'Could not restore your SAVJ session.');
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -184,7 +188,15 @@ export default function App() {
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Authentication failed.'); }
     finally { setApiBusy(false); }
   };
-  const signOut = () => { clearAccessToken(); setApiUser(null); setBackendConnected(false); setTasks(createBrowserTaskRepository().list().length ? createBrowserTaskRepository().list() : initialTasks); setNotice('Signed out. You are viewing the local demo again.'); };
+  const signOut = async () => {
+    try { if (backendConnected) await savjApi.logout(); }
+    catch { /* Always clear local UI state even if the server session has already expired. */ }
+    clearAccessToken();
+    setApiUser(null);
+    setBackendConnected(false);
+    setTasks(createBrowserTaskRepository().list().length ? createBrowserTaskRepository().list() : initialTasks);
+    setNotice('Signed out. You are viewing the local demo again.');
+  };
   const postTask = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
