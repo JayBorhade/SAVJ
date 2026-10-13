@@ -1,76 +1,80 @@
-# SAVJ API and Data Contract (Draft)
+# SAVJ API and Data Contract
 
-This document defines a provider-neutral contract for the future backend. It is not evidence that an API or database has been deployed.
+**Review scope:** current implementation on `security/hardening-phase16`  
+**Deployment status:** repository code only; no live production deployment has been verified.
 
 ## Conventions
 
-- Base path: `/api/v1`
-- JSON request and response bodies.
-- IDs are opaque strings at the API boundary; the current browser demo uses numeric IDs.
-- Timestamps use ISO 8601 UTC.
-- Authenticated endpoints require a verified session; the server derives the acting user ID from that session rather than trusting a user ID in the request body.
-- Validate all inputs on the server. Client-side validation is usability only.
-- Use pagination for list endpoints and a consistent error envelope.
+- API base path: `/api/v1`.
+- IDs are integer database IDs in the current API.
+- Timestamps are ISO 8601; scheduled task/drive timestamps must include a timezone and be in the future.
+- Request validation uses Pydantic. Validation failures use FastAPI's `detail` response format; the custom `error.code` envelope shown in earlier drafts is not implemented.
+- Production authentication uses a Secure, HttpOnly, SameSite=Lax access cookie and validates `Origin` on cookie-authenticated state-changing requests. Development/test environments retain bearer-token compatibility.
+- Email verification and password recovery use hashed, expiring, single-use tokens. Production requires a configured SMTP STARTTLS provider and an HTTPS `PUBLIC_APP_URL` whose origin is included in `CORS_ORIGINS`.
+- API access does not imply KYC verification, payment settlement, or identity proof.
 
-## Error envelope
+## Implemented endpoints
 
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "The request contains invalid fields.",
-    "fields": { "title": "Enter a task title." },
-    "requestId": "opaque-request-id"
-  }
-}
-```
-
-Do not return secrets, stack traces, or private KYC documents in errors.
-
-## Proposed endpoints
-
-| Method | Endpoint | Purpose |
+| Method | Endpoint | Purpose and authorization |
 |---|---|---|
-| GET | `/api/v1/me` | Current user's profile and participation preferences |
-| PATCH | `/api/v1/me` | Update profile, locality, radius and skills |
-| GET | `/api/v1/tasks` | Discover tasks using radius/category/status filters |
-| POST | `/api/v1/tasks` | Create a task as the authenticated requester |
-| GET | `/api/v1/tasks/{taskId}` | Fetch task details |
-| POST | `/api/v1/tasks/{taskId}/accept` | Accept an eligible open task |
-| POST | `/api/v1/tasks/{taskId}/start` | Move an accepted task to in progress |
-| POST | `/api/v1/tasks/{taskId}/proof` | Register uploaded before/after proof references |
-| POST | `/api/v1/tasks/{taskId}/approve` | Requester approves completion |
-| POST | `/api/v1/tasks/{taskId}/cancel` | Cancel when permitted by policy |
-| GET | `/api/v1/drives` | Discover community drives |
-| POST | `/api/v1/drives/{driveId}/join` | Join a drive idempotently |
-| GET | `/api/v1/me/impact` | Calculate impact from eligible completed activity |
-| GET | `/api/v1/tasks/{taskId}/messages` | Read a task conversation |
-| POST | `/api/v1/tasks/{taskId}/messages` | Send a task conversation message |
+| POST | `/api/v1/auth/register` | Create account. Production sends email verification and does not issue a session until verified. |
+| POST | `/api/v1/auth/login` | Authenticate; production returns an HttpOnly cookie, development returns a bearer token. |
+| POST | `/api/v1/auth/logout` | Increment token version, revoke earlier tokens, and clear the cookie. |
+| POST | `/api/v1/auth/verification-request` | Anti-enumeration verification-email request. |
+| POST | `/api/v1/auth/verify-email` | Consume a valid single-use verification token. |
+| POST | `/api/v1/auth/password-reset/request` | Anti-enumeration password-reset request. |
+| POST | `/api/v1/auth/password-reset/confirm` | Consume reset token, update password, and revoke earlier sessions. |
+| GET | `/api/v1/me` | Read the authenticated user's profile. |
+| PATCH | `/api/v1/me` | Update profile, purpose, skills, and tools. |
+| GET | `/api/v1/tasks` | Discover open tasks plus non-open tasks visible to the requester/assigned worker; supports filters and pagination. |
+| POST | `/api/v1/tasks` | Create a task with budget, schedule, location, required skills, and required tools. |
+| GET | `/api/v1/tasks/{task_id}` | Read open task details or participant-only non-open task details. |
+| POST | `/api/v1/tasks/{task_id}/accept` | Accept an eligible open task; checks worker purpose and mandatory skills/tools. |
+| POST | `/api/v1/tasks/{task_id}/start` | Assigned worker starts work; requester may return awaiting-approval work for rework. |
+| POST | `/api/v1/tasks/{task_id}/submit` | Assigned worker submits only after fresh before-and-after proof has been uploaded. |
+| POST | `/api/v1/tasks/{task_id}/approve` | Requester approves submitted work and records verified completion impact. |
+| POST | `/api/v1/tasks/{task_id}/cancel` | Participant-authorized cancellation where allowed by the state machine. |
+| POST | `/api/v1/tasks/{task_id}/proofs/{proof_kind}` | Upload a private `before` or `after` image. |
+| GET | `/api/v1/tasks/{task_id}/proofs` | List proof metadata for task participants. |
+| GET | `/api/v1/proofs/{proof_id}/content` | Retrieve proof image content for authorized participants. |
+| GET/POST | `/api/v1/tasks/{task_id}/messages` | Read/send messages scoped to task participants. |
+| GET | `/api/v1/drives` | Discover open community drives. |
+| POST | `/api/v1/drives` | Create a community drive. |
+| POST | `/api/v1/drives/{drive_id}/join` | Join idempotently with a capacity check. |
+| GET | `/api/v1/workers` | Search worker profiles, skills/tools, and aggregate task ratings. |
+| GET | `/api/v1/tasks/{task_id}/rating` | Read a rating for task participants; returns null if unrated. |
+| POST | `/api/v1/tasks/{task_id}/rating` | Requester rates a completed task once, score 1–5. |
+| GET | `/api/v1/me/impact` | Return server-recorded verified completions and joined drives. |
 
 ## Core data model
 
-- **User**: id, displayName, locality, coordinates (optional), radiusKm, purpose, skills, createdAt, updatedAt.
-- **Task**: id, requesterId, workerId (nullable), title, description, category, locationText, coordinates (nullable), budgetMinorUnits, currency, scheduledAt (nullable), status, createdAt, updatedAt, version.
-- **TaskRequirement**: id, taskId, requirementType, requirementValue, required.
-- **TaskProof**: id, taskId, uploadedBy, kind (`before` or `after`), storageKey, contentType, sizeBytes, createdAt.
-- **CommunityDrive**: id, organizerId, title, description, locationText, coordinates (nullable), startsAt, endsAt (nullable), capacity (nullable), status.
-- **DriveParticipation**: id, driveId, userId, status, joinedAt; unique constraint on (driveId, userId).
-- **Message**: id, taskId, senderId, body, createdAt, readAt (nullable).
-- **ImpactEvent**: id, userId, taskId or driveId, eventType, quantity (nullable), unit (nullable), verifiedAt (nullable), createdAt.
+- **User:** email, password hash, display name, locality, purpose, skills, tools, active status, email verification state, token version, creation time.
+- **Task:** requester/worker IDs, title, description, category, required skills/tools, location and optional coordinates, integer minor-unit budget, currency, timezone-aware schedule, state, optimistic version, timestamps.
+- **TaskProof:** task/uploader IDs, proof kind, private storage key, original filename metadata, content type, byte size, creation time.
+- **TaskRating:** one rating per task, requester and worker IDs, score, private comment, timestamp. Worker directory exposes average and count, not public comments.
+- **CommunityDrive / DriveParticipation:** drive metadata, capacity, status and unique user participation.
+- **Message:** task ID, sender ID, body and timestamps.
+- **ImpactEvent:** server-created completion events. The impact dashboard's medals are derived from verified completions and drive participation.
 
-## Invariants and security
+## Security and correctness invariants
 
-1. The API enforces the same task transitions as `src/domain/taskWorkflow.ts`.
-2. Only the task requester can approve completion; only eligible users can accept an open task.
-3. Status changes use a database transaction and optimistic concurrency (version/ETag) to avoid double acceptance.
-4. A task cannot become Completed until required proof has uploaded successfully and the requester approves it.
-5. File uploads use signed, short-lived upload URLs; validate content type, size and file signatures. Never trust client filenames.
-6. KYC documents and verification state are private; clients cannot self-mark as verified.
-7. Impact is computed from verified/approved records, never from browser-supplied counters.
-8. Store money as integer minor units with explicit currency. Never use floating point as the authoritative payment amount.
-9. Rate-limit writes, protect against duplicate submissions, audit sensitive changes, and scope every task/message query by authorization.
-10. Keep secrets in deployment environment variables and never commit them.
+1. Open tasks are discoverable to authenticated users. Non-open task details and list entries are limited to the requester and assigned worker.
+2. State transitions are checked server-side and serialized with PostgreSQL row locks. SQLite does not provide equivalent row-lock behavior; production concurrency tests must run against PostgreSQL.
+3. A task cannot be submitted for approval without fresh before-and-after images uploaded by its assigned worker during the current work attempt.
+4. Completion impact is recorded only when the requester approves the task. A partial unique index prevents duplicate task-completion events.
+5. Task acceptance enforces the task's mandatory skills and tools against the worker profile.
+6. Proof images are decoded and re-encoded, format/frame/pixel/output-size limited, and stored outside frontend static assets with restrictive filesystem permissions.
+7. Email action tokens are random, stored as SHA-256 hashes, expire, and are single-use. Password reset revokes earlier access tokens.
+8. Money is stored as integer minor units. **A budget is not a payment:** payment collection, escrow, worker payouts, refunds and disputes are not implemented.
+9. Login/register/email action throttling is process-local defense-in-depth. A shared gateway/distributed limiter is required for multi-worker production.
+10. KYC/identity verification, MFA, refresh-token rotation, malware scanning, managed object storage and public moderation/reporting are not implemented. Do not present profiles as KYC-verified.
+11. The current API returns FastAPI validation/error responses and does not yet attach a universal request ID or custom error code envelope.
 
-## Integration strategy
+## Deployment and release gates
 
-Implement a server-side repository/API adapter behind the frontend service boundary. Keep the localStorage adapter strictly for demos. Select the production database, auth provider, map provider, and object storage in a separate integration decision once deployment constraints and keys are available.
+- Run migrations and all tests against the exact release commit and a production-like PostgreSQL service.
+- Configure unique secrets, HTTPS origins, SMTP STARTTLS, the public app URL, private upload storage and backups.
+- Configure distributed rate limiting, monitoring, alerting, log redaction, backup/restore drills, and object retention/deletion.
+- Integrate a compliant KYC provider or reviewed manual process, and a payment/payout provider with verified webhook signatures and idempotency, before enabling paid work.
+- Run browser end-to-end journeys, staging DAST, accessibility checks and independent penetration testing.
+- No live hosting, real SMTP delivery, payment provider, KYC provider, or independent security certification is claimed by this repository update.
