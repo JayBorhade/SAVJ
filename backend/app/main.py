@@ -27,7 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, TaskRating, User, UserNotification
+from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, TaskRating, User, UserNotification, RefreshSession
 from .schemas import DriveCreate, DriveOut, EmailAddressRequest, EmailTokenRequest, MessageCreate, MessageOut, NotificationOut, PasswordResetConfirm, TaskCreate, TaskOut, TaskProofOut, TaskRatingCreate, TaskRatingOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
 from .security import create_access_token, decode_access_token_claims, hash_password, verify_password
 
@@ -48,7 +48,7 @@ async def security_headers(request, call_next):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 # Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
-_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600), "/api/v1/tasks": (10, 60), "/api/v1/drives": (5, 60)}
+_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/refresh": (30, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600), "/api/v1/auth/verify-email": (10, 3600), "/api/v1/tasks": (10, 60), "/api/v1/drives": (5, 60)}
 _ROUTE_LIMITS = [(re.compile(r"/api/v1/tasks/\d+/messages"), (30, 60)), (re.compile(r"/api/v1/tasks/\d+/rating"), (5, 3600)), (re.compile(r"/api/v1/tasks/\d+/proofs/(before|after)"), (10, 60)), (re.compile(r"/api/v1/drives/\d+/join"), (20, 60))]
 _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
@@ -84,8 +84,12 @@ async def limit_rate_limited_requests(request: Request, call_next):
     return await call_next(request)
 
 _ACCESS_COOKIE = "savj_access"
+_REFRESH_COOKIE = "savj_refresh"
 _PRODUCTION = settings.app_env.lower() in {"production", "prod"}
 _COOKIE_PATH = "/api/v1"
+_REFRESH_COOKIE_PATH = "/api/v1/auth"
+_REFRESH_TOKEN_DAYS = 30
+_REFRESH_ROTATION_GRACE_SECONDS = 5
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -96,7 +100,7 @@ async def protect_cookie_authenticated_writes(request: Request, call_next):
     if (
         _PRODUCTION
         and request.method in {"POST", "PUT", "PATCH", "DELETE"}
-        and request.cookies.get(_ACCESS_COOKIE)
+        and (request.cookies.get(_ACCESS_COOKIE) or request.cookies.get(_REFRESH_COOKIE))
         and not request.headers.get("authorization")
     ):
         origin = request.headers.get("origin")
@@ -213,22 +217,41 @@ def _send_action_email_safely(recipient: str, purpose: str, raw_token: str) -> N
         logger.error("SAVJ email delivery failed for action %s (%s)", purpose, type(exc).__name__)
 
 
-def issue_auth_response(user: User, response: Response) -> TokenOut | JSONResponse:
+def _set_auth_cookies(response: Response, access_token: str, access_seconds: int, refresh_token: str, refresh_seconds: int) -> None:
+    response.set_cookie(key=_ACCESS_COOKIE, value=access_token, max_age=access_seconds, httponly=True, secure=True, samesite="lax", path=_COOKIE_PATH)
+    response.set_cookie(key=_REFRESH_COOKIE, value=refresh_token, max_age=refresh_seconds, httponly=True, secure=True, samesite="lax", path=_REFRESH_COOKIE_PATH)
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(key=_ACCESS_COOKIE, path=_COOKIE_PATH, httponly=True, secure=True, samesite="lax")
+    response.delete_cookie(key=_REFRESH_COOKIE, path=_REFRESH_COOKIE_PATH, httponly=True, secure=True, samesite="lax")
+
+
+def _refresh_error(detail: str, *, clear_cookies: bool = True) -> JSONResponse:
+    response = JSONResponse(status_code=401, content={"detail": detail})
+    if clear_cookies:
+        _clear_auth_cookies(response)
+    return response
+
+
+def issue_auth_response(user: User, response: Response, db: Session) -> TokenOut | JSONResponse:
     token, seconds = create_access_token(user.id, user.token_version)
     if _PRODUCTION:
-        # Return the cookie-setting response itself so the Set-Cookie header is
-        # preserved by every ASGI middleware and response-model path.
+        now = datetime.now(timezone.utc)
+        refresh_token = secrets.token_urlsafe(48)
+        refresh_seconds = _REFRESH_TOKEN_DAYS * 24 * 60 * 60
+        db.add(RefreshSession(
+            user_id=user.id,
+            family_id=uuid4().hex,
+            token_hash=_action_token_hash(refresh_token),
+            expires_at=now + timedelta(seconds=refresh_seconds),
+        ))
+        db.commit()
+        # Return the cookie-setting response itself so headers survive every
+        # middleware and response-model path. Neither token is exposed to JS.
         payload = TokenOut(access_token=None, expires_in=seconds, user=user_output(user))
         cookie_response = JSONResponse(content=payload.model_dump(mode="json"))
-        cookie_response.set_cookie(
-            key=_ACCESS_COOKIE,
-            value=token,
-            max_age=seconds,
-            httponly=True,
-            secure=True,
-            samesite="lax",
-            path=_COOKIE_PATH,
-        )
+        _set_auth_cookies(cookie_response, token, seconds, refresh_token, refresh_seconds)
         return cookie_response
     return TokenOut(access_token=token, expires_in=seconds, user=user_output(user))
 
@@ -272,7 +295,7 @@ def register(payload: UserCreate, response: Response, db: Database) -> TokenOut:
         raw_token = _create_action_token(db, user, "verify_email", timedelta(hours=24))
         _send_action_email_safely(user.email, "verify_email", raw_token)
         return TokenOut(access_token=None, expires_in=0, user=user_output(user), requires_email_verification=True)
-    return issue_auth_response(user, response)
+    return issue_auth_response(user, response, db)
 
 @app.post("/api/v1/auth/login", response_model=TokenOut)
 def login(payload: UserLogin, response: Response, db: Database) -> TokenOut:
