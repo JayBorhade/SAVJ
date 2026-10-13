@@ -78,3 +78,16 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .medal-card small { color: var(--muted-text, #65736a); }
 
 .worker-rating { margin-top: 4px; color: var(--muted-text, #65736a); font-size: 0.88rem; }
+
+
+.notification-count { position: absolute; top: -5px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; display: grid; place-items: center; border-radius: 999px; background: #c65d43; color: #fff; border: 2px solid #fff; font-size: 9px; font-weight: 800; line-height: 1; }
+.notification-popover { width: min(360px, calc(100vw - 32px)); max-height: min(520px, calc(100vh - 110px)); overflow: auto; }
+.notification-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.notification-popover-head button { border: 0; background: transparent; color: #2e6140; font-size: 11px; font-weight: 700; }
+.notification-list { display: grid; gap: 7px; }
+.notification-item { display: grid; gap: 5px; text-align: left; padding: 10px; border: 1px solid #e5ebe2; border-radius: 9px; background: #fff; color: #294333; }
+.notification-item.unread { background: #f1f7ef; border-color: #cbdcc8; }
+.notification-item strong { font-size: 12px; }
+.notification-item span { font-size: 11px; line-height: 1.45; color: #68776c; }
+.notification-item small { font-size: 10px; color: #889389; }
+@media (max-width: 600px) { .notification-popover { right: -46px; } }
