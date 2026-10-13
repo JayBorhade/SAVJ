@@ -125,9 +125,11 @@ The integrated full-stack implementation is present on the stacked Phase 1–16 
 - [x] Alembic migration chain and Docker Compose files
 - [x] Automated frontend/backend/container CI on the phase stack
 - [x] Security audit, dependency audit, CodeQL and secret scanning workflows
-- [ ] Resolve the Phase 2 stacked-PR merge conflict and integrate phases in order
-- [ ] Commit a reproducible `package-lock.json` and verify the final integrated tree
-- [ ] Replace localStorage token persistence with a reviewed production session lifecycle
+- [x] Resolve the Phase 2 branch conflict and verify its CI
+- [x] Commit `package-lock.json` and use `npm ci` for frontend CI/container builds
+- [x] Use HttpOnly production access cookies, Origin checks, and server-side logout revocation
+- [ ] Integrate the full phase stack into `main` in dependency order
+- [ ] Add refresh-token rotation, email verification/password recovery, and MFA with configured providers
 - [ ] Configure shared rate limiting, production object storage, malware scanning and retention
 - [ ] Verify production hosting, HTTPS, secrets, backups, monitoring and logs
 - [ ] Complete browser end-to-end, staging DAST and independent penetration testing
@@ -147,4 +149,4 @@ SAVJ is being developed as a Community Engagement Project by students of the Art
 
 The complete implementation is organized as stacked branches from `phase-1/stabilize-and-flows` through `phase-16/launch-hardening`, with a documentation-only Phase 17 verification branch and security PR #18 targeting Phase 16. Later-phase backend, database, API integration, task lifecycle, community drives, messaging, proof uploads, geospatial discovery, worker directory, map UI, Docker, and security hardening exist on the phase stack; they are not yet integrated into `main` or deployed.
 
-Important limitations: Phase 2 is reported as a dirty/non-mergeable PR and must be resolved before safely integrating later phases. A committed npm lockfile is missing. The frontend stores the bearer access token in localStorage, login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
+Important limitations: Phase 2's merge conflict has been resolved in its branch and CI passed, but the stacked phase PRs are still open and the implementation is not yet consolidated into `main`. A committed `package-lock.json` now exists, and frontend CI/container builds use `npm ci`. Production builds use HttpOnly access cookies with Origin checks and logout revocation; refresh-token rotation, email verification/password recovery, and MFA are not yet implemented. Login/register throttling is process-local, and production object storage, malware scanning, shared rate limiting, monitoring, backup/restore verification, browser end-to-end testing, and independent security testing remain release gates. The dashboard retains demo-mode/sample content when not connected to the backend. See [implementation status](docs/IMPLEMENTATION_STATUS.md) and [security audit](docs/SECURITY_AUDIT.md) for the current checklist.
