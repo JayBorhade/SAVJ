@@ -12,3 +12,11 @@ out/
 Thumbs.db
 .vscode/
 .idea/
+
+# Private task proof uploads (never commit user images)
+private_uploads/
+backend/private_uploads/
+
+# Local database migration smoke-test artifact
+backend/migration-check.db
+migration-check.db
