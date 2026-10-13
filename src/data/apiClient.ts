@@ -11,6 +11,7 @@ export type ApiUser = {
   locality: string;
   purpose: string;
   skills: string[];
+  tools: string[];
   created_at: string;
 };
 
@@ -21,8 +22,9 @@ export type ApiTask = {
   title: string;
   description: string;
   category: string;
-  location_text: string;
-  latitude: number | null;
+  required_skills: string[];
+  required_tools: string[];
+  location_text: number | null;
   longitude: number | null;
   budget_minor_units: number;
   currency: string;
@@ -106,7 +108,7 @@ async function authenticate(path: '/api/v1/auth/register' | '/api/v1/auth/login'
 }
 
 export const savjApi = {
-  register: (payload: { email: string; password: string; display_name: string; locality: string; purpose: string; skills: string[] }) =>
+  register: (payload: { email: string; password: string; display_name: string; locality: string; purpose: string; skills: string[]; tools: string[] }) =>
     authenticate('/api/v1/auth/register', payload),
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
@@ -124,7 +126,7 @@ export const savjApi = {
   },
   me: () => request<ApiUser>('/api/v1/me'),
   listWorkers: (search = '', skill = '') => { const params = new URLSearchParams({ limit: '100' }); if (search.trim()) params.set('search', search.trim()); if (skill.trim()) params.set('skill', skill.trim()); return request<ApiWorker[]>(`/api/v1/workers?${params.toString()}`); },
-  updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
+  updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[]; tools?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
   listTasks: (filters?: { latitude?: number; longitude?: number; radius_km?: number }) => {
     const params = new URLSearchParams({ limit: '100' });
     if (filters?.latitude !== undefined && filters.longitude !== undefined) {
@@ -134,7 +136,7 @@ export const savjApi = {
     }
     return request<ApiTask[]>(`/api/v1/tasks?${params.toString()}`);
   },
-  createTask: (payload: { title: string; description: string; category: string; location_text: string; budget_rupees: number; latitude?: number | null; longitude?: number | null; scheduled_at?: string | null }) =>
+  createTask: (payload: { title: string; description: string; category: string; required_skills: string[]; required_tools: string[]; location_text: string; budget_rupees: number; latitude?: number | null; longitude?: number | null; scheduled_at?: string | null }) =>
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
@@ -176,4 +178,4 @@ export type ApiDrive = {
 export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
 export type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
 
-export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; created_at: string };
+export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; tools: string[]; created_at: string };
