@@ -229,16 +229,24 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     requester_token, _ = register("owner@example.com","Owner")
     worker_token, worker = register("worker@example.com","Worker")
     outsider_token, _ = register("taskoutsider@example.com","Outsider")
-    created = client.post("/api/v1/tasks",json={"title":"Clean community garden","description":"Collect litter","location_text":"Pune","budget_rupees":500},headers=auth(requester_token))
+    created = client.post("/api/v1/tasks",json={"title":"Clean community garden","description":"Collect litter","location_text":"Pune","private_location_text":"42 Secret Lane, Pune","latitude":18.5204,"longitude":73.8567,"budget_rupees":500},headers=auth(requester_token))
     assert created.status_code == 201, created.text
     task = created.json()
     assert task["budget_minor_units"] == 50000
     # Open tasks are discoverable, but private task details are hidden after acceptance.
-    assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token)).status_code == 200
+    open_detail = client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token))
+    assert open_detail.status_code == 200
+    assert open_detail.json()["private_location_text"] is None
+    assert open_detail.json()["latitude"] == 18.52 and open_detail.json()["longitude"] == 73.86
+    open_list = client.get("/api/v1/tasks",headers=auth(outsider_token),params={"status":"Open"}).json()
+    listed_task = next(item for item in open_list if item["id"] == task["id"])
+    assert listed_task["private_location_text"] is None and listed_task["latitude"] == 18.52
     assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(requester_token)).status_code == 403
     accepted = client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(worker_token))
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["worker_id"] == worker["id"]
+    assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(worker_token)).json()["private_location_text"] == "42 Secret Lane, Pune"
+    assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(requester_token)).json()["private_location_text"] == "42 Secret Lane, Pune"
     assert any(n["notification_type"] == "task_accepted" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(outsider_token)).status_code == 409
     assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token)).status_code == 404
