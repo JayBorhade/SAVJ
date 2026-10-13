@@ -4,7 +4,7 @@ Last updated: 2026-10-09
 
 ## Milestone 1 — Frontend foundation
 
-Status: **Initial batch committed; build verification pending CI**
+Status: **Frontend foundation + first Phase 1 workflow batch committed; build verification pending CI**
 
 Implemented in the current repository:
 - React + TypeScript application entry point.
@@ -14,16 +14,25 @@ Implemented in the current repository:
 - Task feed with search, category filter, radius filter, and responsive task list.
 - Illustrative map panel with task markers (not connected to a live map provider).
 - Community drives with join-state interactions.
-- Task-posting modal that adds tasks to the current in-memory demo feed.
+- Task-posting modal with field validation; tasks persist in browser local storage (demo only).
+- First-run onboarding for name, area and participation purpose; personalized greeting and location tag.
+- Task-detail modal with demo lifecycle transitions: open → accepted → in progress → awaiting approval → completed.
+- Completion proof gate requiring selection of both before and after image files (demo validation only; files are not uploaded).
+- Demo impact values explicitly labelled as sample data.
 - Impact page with sample achievements and activity history.
 - Messages, profile, and settings placeholder screens.
 - GitHub Actions workflow to install dependencies and run the frontend build.
 
 ### Important current limitations
 
-The current dashboard uses sample data and in-memory React state. Data does not persist after refresh. Posting a task and joining a drive are demo interactions, not server-backed actions. The map is illustrative; it does not geocode addresses or display live map tiles. Authentication, KYC, worker acceptance rules, task messaging, image upload/storage, payment processing, and a production database are not implemented yet.
+The current dashboard uses sample data. Tasks, joined drives, and basic onboarding identity persist in browser local storage only; this is not server persistence. Posting a task and joining a drive are demo interactions, not server-backed actions. The map is illustrative; it does not geocode addresses or display live map tiles. Authentication, KYC, worker acceptance rules, task messaging, image upload/storage, payment processing, and a production database are not implemented yet.
 
 ## Next milestones
+
+### Phase 1 — Stabilization in progress
+- Initial onboarding and task-detail flow committed to the working branch.
+- Demo impact figures labelled as sample data.
+- Remaining: real server-side lifecycle/authorization, actual image uploads, profile/skills persistence, accessibility review, automated tests, and CI verification.
 
 ### Milestone 2 — Frontend workflows
 - Create a structured task details view and task lifecycle states.
