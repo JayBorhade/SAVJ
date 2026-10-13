@@ -49,6 +49,7 @@ def test_task_lifecycle_permissions_and_impact():
     accepted = client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(worker_token))
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["worker_id"] == worker["id"]
+    assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(outsider_token)).status_code == 409
     assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token)).status_code == 404
     outsider_tasks = client.get("/api/v1/tasks",headers=auth(outsider_token),params={"status":"Accepted"})
     assert outsider_tasks.status_code == 200
