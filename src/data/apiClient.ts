@@ -38,6 +38,7 @@ export type AuthResult = {
   token_type: string;
   expires_in: number;
   user: ApiUser;
+  requires_email_verification?: boolean;
 };
 
 type ApiError = { detail?: string | Array<{ msg?: string }> };
@@ -109,6 +110,14 @@ export const savjApi = {
     authenticate('/api/v1/auth/register', payload),
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
+  requestEmailVerification: (email: string) =>
+    request<{ message: string }>('/api/v1/auth/verification-request', { method: 'POST', body: JSON.stringify({ email }) }, false),
+  verifyEmail: (token: string) =>
+    request<{ message: string }>('/api/v1/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }, false),
+  requestPasswordReset: (email: string) =>
+    request<{ message: string }>('/api/v1/auth/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) }, false),
+  confirmPasswordReset: (token: string, new_password: string) =>
+    request<{ message: string }>('/api/v1/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify({ token, new_password }) }, false),
   logout: async () => {
     await request<void>('/api/v1/auth/logout', { method: 'POST' });
     clearAccessToken();
