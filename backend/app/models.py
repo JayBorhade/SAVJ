@@ -16,6 +16,7 @@ class User(Base):
     purpose: Mapped[str] = mapped_column(String(24), default="Both")
     skills_json: Mapped[str] = mapped_column(Text, default="[]")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 class Task(Base):
