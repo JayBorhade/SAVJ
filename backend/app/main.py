@@ -680,7 +680,7 @@ def list_messages(task_id: int, user: CurrentUser, db: Database, limit: int = Qu
 
 @app.post("/api/v1/tasks/{task_id}/messages", response_model=MessageOut, status_code=201)
 def send_message(task_id: int, payload: MessageCreate, user: CurrentUser, db: Database) -> Message:
-    task_access(db, task_id, user.id)
+    task = task_access(db, task_id, user.id)
     message = Message(task_id=task_id, sender_id=user.id, body=payload.body.strip())
     recipient_id = task.worker_id if user.id == task.requester_id else task.requester_id
     if recipient_id and recipient_id != user.id:
