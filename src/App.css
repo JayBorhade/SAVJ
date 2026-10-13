@@ -42,3 +42,15 @@
 .proof-fields input{max-width:100%;font-size:12px}
 .proof-fields small{color:#7a887c;font-size:10px;line-height:1.5}
 button:disabled{opacity:.45;cursor:not-allowed}
+
+
+.requirement-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #d6a34a;
+  border-radius: 10px;
+  background: #fff8e8;
+  color: #704b0d;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
