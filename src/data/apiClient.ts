@@ -2,6 +2,7 @@ import type { TaskStatus } from '../domain/taskWorkflow';
 
 const API_BASE_URL = (import.meta.env.VITE_SAVJ_API_URL || (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000')).replace(/\/$/, '');
 const TOKEN_KEY = 'savj.accessToken';
+let volatileAccessToken: string | null = null;
 
 export type ApiUser = {
   id: number;
@@ -42,15 +43,23 @@ export type AuthResult = {
 type ApiError = { detail?: string | Array<{ msg?: string }> };
 
 export function getAccessToken(): string | null {
-  try { return window.localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  try {
+    const stored = window.localStorage.getItem(TOKEN_KEY);
+    if (stored) return stored;
+  } catch { /* private browsing or storage policy may disable persistence */ }
+  return volatileAccessToken;
 }
 
 export function clearAccessToken(): void {
+  volatileAccessToken = null;
   try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
 }
 
 function saveAccessToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
+  // Keep this session usable when browser storage is disabled. Persistent storage
+  // remains a known security tradeoff documented in the security audit.
+  volatileAccessToken = token;
+  try { window.localStorage.setItem(TOKEN_KEY, token); } catch { /* fall back to in-memory session */ }
 }
 
 async function request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
