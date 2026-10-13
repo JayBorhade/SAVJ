@@ -52,9 +52,6 @@ class Settings(BaseSettings):
                     or " " in origin
                 ):
                     raise RuntimeError("Production CORS_ORIGINS must contain HTTPS origins without paths, credentials, queries, or fragments.")
-            public_origin = f"{public_url.scheme}://{public_url.netloc}".rstrip("/")
-            if public_origin not in origins:
-                raise RuntimeError("PUBLIC_APP_URL origin must also be listed in CORS_ORIGINS.")
             if not self.smtp_host or not self.smtp_from or not self.public_app_url:
                 raise RuntimeError("Production requires SMTP_HOST, SMTP_FROM, and PUBLIC_APP_URL for email verification and account recovery.")
             if not self.smtp_starttls:
@@ -62,6 +59,9 @@ class Settings(BaseSettings):
             public_url = urlsplit(self.public_app_url)
             if public_url.scheme != "https" or not public_url.hostname or public_url.username or public_url.password or public_url.query or public_url.fragment:
                 raise RuntimeError("PUBLIC_APP_URL must be an HTTPS URL without credentials, query, or fragment.")
+            public_origin = f"{public_url.scheme}://{public_url.netloc}".rstrip("/")
+            if public_origin not in origins:
+                raise RuntimeError("PUBLIC_APP_URL origin must also be listed in CORS_ORIGINS.")
         return self
 
 
