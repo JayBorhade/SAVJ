@@ -149,6 +149,7 @@ export const savjApi = {
   me: () => request<ApiUser>('/api/v1/me'),
   listWorkers: (search = '', skill = '') => { const params = new URLSearchParams({ limit: '100' }); if (search.trim()) params.set('search', search.trim()); if (skill.trim()) params.set('skill', skill.trim()); return request<ApiWorker[]>(`/api/v1/workers?${params.toString()}`); },
   updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[]; tools?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
+  getTask: (id: number) => request<ApiTask>(`/api/v1/tasks/${id}`),
   listTasks: (filters?: { latitude?: number; longitude?: number; radius_km?: number }) => {
     const params = new URLSearchParams({ limit: '100' });
     if (filters?.latitude !== undefined && filters.longitude !== undefined) {
