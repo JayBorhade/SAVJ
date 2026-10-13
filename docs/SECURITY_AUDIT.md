@@ -31,7 +31,7 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 | 17 | Source maps | Build/deployment configuration was not validated in a built artifact. | Do not publish production source maps publicly unless access-controlled and intentionally required. |
 | 18 | Default credentials | Production rejects weak/default JWT secrets; no seeded default account was identified in reviewed files. | Check deployment, database, and admin credentials outside Git before release. |
 | 19 | Sensitive logs | No explicit credential logging was identified in inspected excerpts; runtime/deployment logs were not available. | Redact Authorization headers, passwords, tokens, personal data, and uploaded content; review host logs. |
-| 20 | Vulnerable dependencies | Frontend dependency audit initially found vulnerable Tailwind/Vite/React Router chains and the Python audit found pytest 8.4.2 vulnerable; package ranges were upgraded (Tailwind v4, Vite 6, React Router 7, pytest 9.0.3+) and CI is being rerun. | Verify all audit jobs pass and commit a reproducible npm lockfile before release. |
+| 20 | Vulnerable dependencies | Initial frontend and Python audits found vulnerable Tailwind/Vite/React Router chains and pytest 8.4.2. Upgraded to Tailwind v4, Vite 6, React Router 7, and pytest 9.0.3+; latest npm and pip audits pass on the reviewed PR head. A committed npm lockfile is still missing, so dependency resolution is not yet reproducible. | Verify all audit jobs pass and commit a reproducible npm lockfile before release. |
 
 ## Release gates
 
