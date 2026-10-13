@@ -781,10 +781,19 @@ async def upload_task_proof(
     destination = (UPLOAD_DIR / storage_name).resolve()
     if destination.parent != UPLOAD_DIR:
         raise HTTPException(status_code=400, detail="Invalid upload path.")
-    destination.write_bytes(data)
+    file_descriptor: int | None = None
     try:
-        os.chmod(destination, 0o600)
+        # Tighten an existing mounted directory too; mkdir(mode=...) does not
+        # change permissions when the directory already exists.
+        os.chmod(UPLOAD_DIR, 0o700)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        file_descriptor = os.open(destination, flags, 0o600)
+        with os.fdopen(file_descriptor, "wb") as stored_file:
+            file_descriptor = None
+            stored_file.write(data)
     except OSError:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
         destination.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="Private proof storage permissions could not be secured.") from None
     proof = TaskProof(task_id=task.id, uploader_id=user.id, proof_kind=proof_kind,
