@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+dist
+backend/.venv
+backend/__pycache__
+backend/**/*.pyc
+backend/savj.db
+backend/private_uploads
+private_uploads
+.env
+.env.*
+!.env.example

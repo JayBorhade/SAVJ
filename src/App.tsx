@@ -1,29 +1,77 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowRight, Bell, CalendarDays, CheckCircle2,
-  ChevronDown, CircleHelp, Compass, Filter, Flower2, HandHeart, Heart,
-  Leaf, MapPin, Menu, MessageCircle, Plus, Search, Settings2, ShieldCheck,
-  Sprout, TreePine, Users, Wallet, X, Clock3, Recycle, Waves, Wind
+  ChevronDown, Compass, Filter, Flower2, HandHeart,
+  Leaf, MapPin, MessageCircle, Plus, Search, Settings2, ShieldCheck,
+  Sprout, TreePine, Users, UsersRound, X, Clock3, Recycle, Waves, Wind
 } from 'lucide-react';
 import './App.css';
+import { transitionTaskStatus, validateTaskDraft, type TaskStatus } from './domain/taskWorkflow';
+import { createBrowserTaskRepository } from './data/taskRepository';
+import { clearAccessToken, getAccessToken, savjApi, type ApiTask, type ApiNotification, type ApiTaskRating, type ApiUser } from './data/apiClient';
+import LiveCommunity from './components/LiveCommunity';
+import LiveMessages from './components/LiveMessages';
+import LiveImpact from './components/LiveImpact';
+import LiveProfile from './components/LiveProfile';
+import TaskProofViewer from './components/TaskProofViewer';
+import WorkerDirectory from './components/WorkerDirectory';
+import InteractiveMap from './components/InteractiveMap';
 
 type Task = {
   id: number; title: string; category: string; location: string; distance: number;
-  budget: number; date: string; skills: string[]; status: 'Open' | 'In progress';
+  budget: number; date: string; skills: string[]; tools?: string[]; status: TaskStatus;
   icon: 'leaf' | 'tree' | 'water' | 'recycle'; description: string;
+  latitude?: number | null; longitude?: number | null;
+  requesterId?: number; workerId?: number | null;
 };
 
 const initialTasks: Task[] = [
-  { id: 1, title: 'Clean up the neighborhood park', category: 'Community cleanup', location: 'Aundh, Pune', distance: 1.2, budget: 800, date: 'Today, 4:00 PM', skills: ['Cleanup', 'Teamwork'], status: 'Open', icon: 'leaf', description: 'Help collect litter, sort recyclables, and leave the park cleaner for everyone.' },
-  { id: 2, title: 'Plant native trees along the lane', category: 'Tree plantation', location: 'Baner, Pune', distance: 2.4, budget: 1200, date: 'Tomorrow, 9:00 AM', skills: ['Gardening', 'Plantation'], status: 'Open', icon: 'tree', description: 'Plant and water native saplings with a small neighborhood group.' },
-  { id: 3, title: 'Restore the community garden', category: 'Green spaces', location: 'Pashan, Pune', distance: 3.1, budget: 650, date: 'Sat, 10:30 AM', skills: ['Gardening', 'Cleanup'], status: 'In progress', icon: 'leaf', description: 'Remove weeds, prepare garden beds, and tidy the shared green space.' },
-  { id: 4, title: 'Collect plastic near the lake', category: 'Waterbody cleanup', location: 'Pashan Lake, Pune', distance: 4.3, budget: 950, date: 'Sun, 7:30 AM', skills: ['Cleanup', 'Waste sorting'], status: 'Open', icon: 'water', description: 'Join a supervised cleanup focused on plastic waste around the lakeside.' },
+  { id: 1, title: 'Clean up the neighborhood park', category: 'Community cleanup', location: 'Aundh, Pune', distance: 1.2, budget: 800, date: 'Today, 4:00 PM', skills: ['Cleanup', 'Teamwork'], tools: ['Trash bags', 'Gloves'], status: 'Open', icon: 'leaf', description: 'Help collect litter, sort recyclables, and leave the park cleaner for everyone.' },
+  { id: 2, title: 'Plant native trees along the lane', category: 'Tree plantation', location: 'Baner, Pune', distance: 2.4, budget: 1200, date: 'Tomorrow, 9:00 AM', skills: ['Gardening', 'Plantation'], tools: ['Saplings', 'Watering can'], status: 'Open', icon: 'tree', description: 'Plant and water native saplings with a small neighborhood group.' },
+  { id: 3, title: 'Restore the community garden', category: 'Green spaces', location: 'Pashan, Pune', distance: 3.1, budget: 650, date: 'Sat, 10:30 AM', skills: ['Gardening', 'Cleanup'], tools: ['Rake', 'Gloves'], status: 'In progress', icon: 'leaf', description: 'Remove weeds, prepare garden beds, and tidy the shared green space.' },
+  { id: 4, title: 'Collect plastic near the lake', category: 'Waterbody cleanup', location: 'Pashan Lake, Pune', distance: 4.3, budget: 950, date: 'Sun, 7:30 AM', skills: ['Cleanup', 'Waste sorting'], tools: ['Grabbers', 'Collection bags'], status: 'Open', icon: 'water', description: 'Join a supervised cleanup focused on plastic waste around the lakeside.' },
 ];
 
 const drives = [
   { title: 'Pashan Lake Clean-up', date: 'SUN, OCT 12 · 7:30 AM', place: 'Pashan Lake, Pune', joined: 24, kind: 'water' },
   { title: 'Green Pune: Native Trees', date: 'SAT, OCT 18 · 9:00 AM', place: 'Baner Biodiversity Park', joined: 38, kind: 'tree' },
 ];
+
+function readLocalStorage(key: string, fallback = ''): string {
+  try { return window.localStorage.getItem(key) ?? fallback; }
+  catch { return fallback; }
+}
+
+function writeLocalStorage(key: string, value: string): void {
+  try { window.localStorage.setItem(key, value); }
+  catch { /* storage may be disabled; keep the current session usable */ }
+}
+
+function fromApiTask(task: ApiTask): Task {
+  const date = task.scheduled_at ? new Date(task.scheduled_at).toLocaleString() : 'Schedule to be confirmed';
+  const icon: Task['icon'] = /tree|plant/i.test(task.category + task.title) ? 'tree' : /water|lake/i.test(task.category + task.title) ? 'water' : /recycl|waste/i.test(task.category + task.title) ? 'recycle' : 'leaf';
+  return { id: task.id, title: task.title, category: task.category, location: task.location_text, latitude: task.latitude, longitude: task.longitude, requesterId: task.requester_id, workerId: task.worker_id, distance: 0, budget: task.budget_minor_units / 100, date, skills: task.required_skills || [], tools: task.required_tools || [], status: task.status, icon, description: task.description };
+}
+
+function parseCommaSeparated(value: string): string[] {
+  return [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))].slice(0, 20);
+}
+
+function missingRequirements(task: Task, user: ApiUser): string[] {
+  const skills = new Set(user.skills.map((item) => item.trim().toLocaleLowerCase()));
+  const tools = new Set((user.tools || []).map((item) => item.trim().toLocaleLowerCase()));
+  return [
+    ...task.skills.filter((item) => !skills.has(item.trim().toLocaleLowerCase())).map((item) => 'skill: ' + item),
+    ...(task.tools || []).filter((item) => !tools.has(item.trim().toLocaleLowerCase())).map((item) => 'tool: ' + item),
+  ];
+}
+
+function distanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (value: number) => value * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.min(1, a)));
+}
 
 function TaskIcon({ kind }: { kind: Task['icon'] }) {
   if (kind === 'tree') return <TreePine size={21} />;
@@ -34,48 +82,290 @@ function TaskIcon({ kind }: { kind: Task['icon'] }) {
 
 export default function App() {
   const [activePage, setActivePage] = useState('Overview');
-  const [tasks, setTasks] = useState(initialTasks);
+  const [profileName, setProfileName] = useState(() => readLocalStorage('savj.profileName'));
+  const [profileArea, setProfileArea] = useState(() => readLocalStorage('savj.profileArea', 'Pune, Maharashtra'));
+  const [purpose, setPurpose] = useState(() => readLocalStorage('savj.purpose', 'Both'));
+  const [onboardingDone, setOnboardingDone] = useState(() => readLocalStorage('savj.onboardingDone') === 'true');
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingSkills, setOnboardingSkills] = useState<string[]>([]);
+  const [tasks, setTasks] = useState<Task[]>(() => { try { const repository=createBrowserTaskRepository(); return readLocalStorage('savj.tasks') ? repository.list() : initialTasks; } catch { return initialTasks; } });
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [taskRating, setTaskRating] = useState<ApiTaskRating | null>(null);
+  const [ratingScore, setRatingScore] = useState(5);
+  const [ratingComment, setRatingComment] = useState('');
+  const [ratingLoading, setRatingLoading] = useState(false);
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const [beforeProofName, setBeforeProofName] = useState('');
+  const [afterProofName, setAfterProofName] = useState('');
+  const [beforeProofFile, setBeforeProofFile] = useState<File | null>(null);
+  const [afterProofFile, setAfterProofFile] = useState<File | null>(null);
   const [search, setSearch] = useState('');
   const [radius, setRadius] = useState(5);
+  const [currentCoordinates, setCurrentCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [taskCoordinates, setTaskCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [locationBusy, setLocationBusy] = useState(false);
   const [category, setCategory] = useState('All tasks');
   const [showPostModal, setShowPostModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [joinedDrives, setJoinedDrives] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [joinedDrives, setJoinedDrives] = useState<string[]>(() => { try { return JSON.parse(readLocalStorage('savj.joinedDrives', '[]')) as string[]; } catch { return []; } });
+  useEffect(() => { try { createBrowserTaskRepository().saveAll(tasks); } catch { /* Browser storage may be disabled; the UI remains usable for this session. */ } }, [tasks]);
+  useEffect(() => { writeLocalStorage('savj.joinedDrives', JSON.stringify(joinedDrives)); }, [joinedDrives]);
+  useEffect(() => { if (profileName.trim()) writeLocalStorage('savj.profileName', profileName.trim()); }, [profileName]);
+  useEffect(() => { if (profileArea.trim()) writeLocalStorage('savj.profileArea', profileArea.trim()); }, [profileArea]);
+  useEffect(() => {
+    if (!getAccessToken() && !import.meta.env.PROD) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [user, apiTasks] = await Promise.all([savjApi.me(), savjApi.listTasks()]);
+        if (cancelled) return;
+        setApiUser(user); setBackendConnected(true); setProfileName(user.display_name); setProfileArea(user.locality); setPurpose(user.purpose);
+        setTasks(apiTasks.map(fromApiTask));
+        setNotice('Connected to SAVJ backend. Tasks are now loaded from the server.');
+      } catch (error) {
+        if (cancelled) return;
+        if (!getAccessToken() && error instanceof Error && error.message === 'Authentication required.') return;
+        setNotice(error instanceof Error ? error.message : 'Could not restore your SAVJ session.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [taskTitle, setTaskTitle] = useState('');
+  const [taskCategory, setTaskCategory] = useState('Community cleanup');
+  const [taskScheduledAt, setTaskScheduledAt] = useState('');
   const [taskLocation, setTaskLocation] = useState('Pune, Maharashtra');
   const [taskBudget, setTaskBudget] = useState('500');
   const [taskDescription, setTaskDescription] = useState('');
+  const [taskRequiredSkills, setTaskRequiredSkills] = useState('Cleanup, Teamwork');
+  const [taskRequiredTools, setTaskRequiredTools] = useState('');
   const [notice, setNotice] = useState('');
+  const [apiUser, setApiUser] = useState<ApiUser | null>(null);
+  const [apiEmail, setApiEmail] = useState('');
+  const [apiPassword, setApiPassword] = useState('');
+  const [apiTools, setApiTools] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [apiBusy, setApiBusy] = useState(false);
+  const [backendConnected, setBackendConnected] = useState(false);
+  const [authAction, setAuthAction] = useState<'' | 'verify-email' | 'reset-password'>(() => {
+    const action = new URLSearchParams(window.location.search).get('action');
+    return action === 'verify-email' || action === 'reset-password' ? action : '';
+  });
+  const [authActionToken, setAuthActionToken] = useState(() => new URLSearchParams(window.location.search).get('token') || '');
+  const [authActionPassword, setAuthActionPassword] = useState('');
+  const [authActionBusy, setAuthActionBusy] = useState(false);
 
-  const filteredTasks = useMemo(() => tasks.filter((task) =>
-    task.distance <= radius &&
+  useEffect(() => {
+    if (!backendConnected || !currentCoordinates) return;
+    let cancelled = false;
+    void savjApi.listTasks({ ...currentCoordinates, radius_km: radius })
+      .then((apiTasks) => { if (!cancelled) setTasks(apiTasks.map(fromApiTask)); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Radius search failed.'); });
+    return () => { cancelled = true; };
+  }, [backendConnected, currentCoordinates, radius]);
+
+
+
+
+  const filteredTasks = useMemo(() => tasks.map((task) => {
+    const distance = currentCoordinates && task.latitude != null && task.longitude != null
+      ? distanceKm(currentCoordinates.latitude, currentCoordinates.longitude, task.latitude, task.longitude)
+      : task.distance;
+    return { ...task, distance };
+  }).filter((task) =>
+    (currentCoordinates ? task.latitude != null && task.longitude != null && task.distance <= radius : task.distance <= radius) &&
     (category === 'All tasks' || task.category === category) &&
     (task.title + task.location + task.category + task.skills.join(' ')).toLowerCase().includes(search.toLowerCase())
-  ), [tasks, radius, category, search]);
+  ), [tasks, radius, category, search, currentCoordinates]);
 
   const navigate = (page: string) => { setActivePage(page); setNotice(''); };
-  const joinDrive = (title: string) => {
-    setJoinedDrives((current) => current.includes(title) ? current : [...current, title]);
-    setNotice('You’re on the list! Drive details are ready in your community activity.');
+  const requestCurrentLocation = () => {
+    if (!navigator.geolocation) { setNotice('This browser does not support location services.'); return; }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => { setCurrentCoordinates({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationBusy(false); setNotice('Location enabled. Radius discovery now uses real coordinates where available.'); },
+      () => { setLocationBusy(false); setNotice('Location permission was unavailable. You can still browse tasks by area text.'); },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
   };
-  const postTask = (event: React.FormEvent<HTMLFormElement>) => {
+  const tagTaskLocation = () => {
+    if (!navigator.geolocation) { setNotice('This browser does not support location services.'); return; }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => { setTaskCoordinates({ latitude: position.coords.latitude, longitude: position.coords.longitude }); setLocationBusy(false); setNotice('Task location tagged with your current coordinates.'); },
+      () => { setLocationBusy(false); setNotice('Could not access location. You can publish the task without coordinates.'); },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+    );
+  };
+  const joinDrive = (title: string) => {
+    if (backendConnected) {
+      setNotice('The overview drive cards are illustrative. Open Community to join a live drive.');
+      return;
+    }
+    setJoinedDrives((current) => current.includes(title) ? current : [...current, title]);
+    setNotice('You joined this drive in the local demo. This participation is saved only in this browser.');
+  };
+  const signInOrRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setApiBusy(true);
+    try {
+      const result = authMode === 'register'
+        ? await savjApi.register({ email: apiEmail.trim(), password: apiPassword, display_name: profileName.trim() || apiEmail.split('@')[0], locality: profileArea.trim() || 'Pune, Maharashtra', purpose: purpose === 'Volunteer' ? 'Both' : purpose, skills: onboardingSkills, tools: parseCommaSeparated(apiTools) })
+        : await savjApi.login(apiEmail.trim(), apiPassword);
+      if (result.requires_email_verification) {
+        setApiPassword('');
+        setNotice('Account created. Check your email for a verification link before signing in. If it does not arrive, use Resend verification in Settings.');
+        return;
+      }
+      setApiUser(result.user); setProfileName(result.user.display_name); setProfileArea(result.user.locality); setPurpose(result.user.purpose); setBackendConnected(true);
+      const serverTasks = await savjApi.listTasks(); setTasks(serverTasks.map(fromApiTask));
+      setApiPassword(''); setNotice('Signed in. SAVJ tasks are synced with the backend database.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Authentication failed.'); }
+    finally { setApiBusy(false); }
+  };
+  const clearAuthAction = () => {
+    setAuthAction('');
+    setAuthActionToken('');
+    setAuthActionPassword('');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  };
+  const requestVerificationEmail = async () => {
+    const email = apiEmail.trim();
+    if (!email) { setNotice('Enter your email address first.'); return; }
+    try { const result = await savjApi.requestEmailVerification(email); setNotice(result.message); }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not request verification email.'); }
+  };
+  const requestPasswordResetEmail = async () => {
+    const email = apiEmail.trim();
+    if (!email) { setNotice('Enter your email address first.'); return; }
+    try { const result = await savjApi.requestPasswordReset(email); setNotice(result.message); }
+    catch (error) { setNotice(error instanceof Error ? error.message : 'Could not request password reset.'); }
+  };
+  const verifyEmailFromLink = async () => {
+    setAuthActionBusy(true);
+    try {
+      const result = await savjApi.verifyEmail(authActionToken);
+      setNotice(result.message);
+      setAuthMode('login');
+      setActivePage('Settings');
+      clearAuthAction();
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not verify this email link.'); }
+    finally { setAuthActionBusy(false); }
+  };
+  const resetPasswordFromLink = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!taskTitle.trim() || !taskLocation.trim()) return;
-    const newTask: Task = {
-      id: Date.now(), title: taskTitle.trim(), category: 'Community cleanup',
-      location: taskLocation.trim(), distance: 1.5, budget: Math.max(0, Number(taskBudget) || 0),
-      date: 'Schedule to be confirmed', skills: ['Community'], status: 'Open', icon: 'leaf',
-      description: taskDescription.trim() || 'A new local task posted by the community.'
-    };
+    setAuthActionBusy(true);
+    try {
+      const result = await savjApi.confirmPasswordReset(authActionToken, authActionPassword);
+      setNotice(result.message);
+      setAuthMode('login');
+      setActivePage('Settings');
+      clearAuthAction();
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not reset your password.'); }
+    finally { setAuthActionBusy(false); }
+  };
+  const submitTaskRating = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedTask) return;
+    setRatingBusy(true);
+    try {
+      const rating = await savjApi.rateTask(selectedTask.id, ratingScore, ratingComment);
+      setTaskRating(rating);
+      setNotice('Thanks — your rating has been recorded.');
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not submit this rating.'); }
+    finally { setRatingBusy(false); }
+  };
+  const openNotification = async (notification: ApiNotification) => {
+    setShowNotifications(false);
+    try {
+      if (!notification.read_at) {
+        const updated = await savjApi.markNotificationRead(notification.id);
+        setNotifications((items) => items.map((item) => item.id === updated.id ? updated : item));
+      }
+      if (notification.task_id) {
+        const apiTask = await savjApi.getTask(notification.task_id);
+        const task = fromApiTask(apiTask);
+        setTasks((items) => items.some((item) => item.id === task.id) ? items.map((item) => item.id === task.id ? task : item) : [task, ...items]);
+        setSelectedTask(task);
+        setActivePage('Explore');
+      } else if (notification.drive_id) {
+        setActivePage('Community');
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not open this notification.');
+    }
+  };
+  const markAllNotificationsRead = async () => {
+    try {
+      await savjApi.markAllNotificationsRead();
+      setNotifications((items) => items.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not mark notifications read.');
+    }
+  };
+  const unreadNotificationCount = notifications.filter((item) => !item.read_at).length;
+  const signOut = async () => {
+    try { if (backendConnected) await savjApi.logout(); }
+    catch { /* Always clear local UI state even if the server session has already expired. */ }
+    clearAccessToken();
+    setApiUser(null);
+    setBackendConnected(false);
+    setTasks(createBrowserTaskRepository().list().length ? createBrowserTaskRepository().list() : initialTasks);
+    setNotice('Signed out. You are viewing the local demo again.');
+  };
+  const postTask = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
+    if (!validation.valid) { setNotice(Object.values(validation.errors).filter(Boolean).join(' ')); return; }
+    if (taskScheduledAt && (!Number.isFinite(new Date(taskScheduledAt).getTime()) || new Date(taskScheduledAt).getTime() <= Date.now())) { setNotice('Choose a future date and time, or leave the schedule blank.'); return; }
+    if (backendConnected) {
+      setApiBusy(true);
+      try {
+        const created = await savjApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim(), category: taskCategory, location_text: taskLocation.trim(), budget_rupees: validation.budget, required_skills: parseCommaSeparated(taskRequiredSkills), required_tools: parseCommaSeparated(taskRequiredTools), latitude: taskCoordinates?.latitude ?? null, longitude: taskCoordinates?.longitude ?? null, scheduled_at: taskScheduledAt ? new Date(taskScheduledAt).toISOString() : null });
+        const newTask = fromApiTask(created);
+        setTasks((current) => [newTask, ...current]); setShowPostModal(false); setActivePage('Explore'); setSearch('');
+        setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskScheduledAt(''); setTaskCoordinates(null); setNotice('Task posted to the SAVJ backend.');
+      } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not post task.'); }
+      finally { setApiBusy(false); }
+      return;
+    }
+    const newTask: Task = createBrowserTaskRepository().create(
+      { title: taskTitle, location: taskLocation, budget: validation.budget, description: taskDescription },
+      { category: taskCategory, distance: 1.5, date: taskScheduledAt ? new Date(taskScheduledAt).toLocaleString() : 'Schedule to be confirmed', skills: parseCommaSeparated(taskRequiredSkills), tools: parseCommaSeparated(taskRequiredTools), status: 'Open', icon: /tree|plant/i.test(taskCategory) ? 'tree' : /water|lake/i.test(taskCategory) ? 'water' : /waste|recycl/i.test(taskCategory) ? 'recycle' : 'leaf' },
+    );
     setTasks((current) => [newTask, ...current]);
     setShowPostModal(false); setActivePage('Explore'); setSearch('');
-    setTaskTitle(''); setTaskDescription(''); setTaskBudget('500');
+    setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskScheduledAt(''); setTaskCoordinates(null);
     setNotice('Your task has been added to the local demo feed.');
   };
+
+  useEffect(() => {
+    if (!backendConnected || !apiUser || !selectedTask || selectedTask.status !== 'Completed' || selectedTask.requesterId !== apiUser.id) {
+      setTaskRating(null);
+      setRatingLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRatingLoading(true);
+    void savjApi.getTaskRating(selectedTask.id)
+      .then((rating) => { if (!cancelled) setTaskRating(rating); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load task rating.'); })
+      .finally(() => { if (!cancelled) setRatingLoading(false); });
+    return () => { cancelled = true; };
+  }, [backendConnected, apiUser, selectedTask]);
+
+  useEffect(() => {
+    if (!backendConnected || !showNotifications) return;
+    let cancelled = false;
+    void savjApi.listNotifications()
+      .then((items) => { if (!cancelled) setNotifications(items); })
+      .catch((error) => { if (!cancelled) setNotice(error instanceof Error ? error.message : 'Could not load notifications.'); });
+    return () => { cancelled = true; };
+  }, [backendConnected, showNotifications]);
 
   const navItems = [
     { label: 'Overview', icon: Activity },
     { label: 'Explore', icon: Compass },
+    { label: 'Workers', icon: UsersRound },
     { label: 'Community', icon: Users },
     { label: 'Messages', icon: MessageCircle },
     { label: 'My impact', icon: Sprout },
@@ -93,7 +383,7 @@ export default function App() {
           {navItems.map(({ label, icon: Icon }) => (
             <button key={label} className={activePage === label ? 'nav-item active' : 'nav-item'} onClick={() => navigate(label)}>
               <Icon size={19} /><span>{label}</span>
-              {label === 'Messages' && <span className="nav-count">2</span>}
+              
             </button>
           ))}
         </nav>
@@ -107,8 +397,8 @@ export default function App() {
         </div>
         <button className="nav-item settings-link" onClick={() => navigate('Settings')}><Settings2 size={19} /><span>Settings</span></button>
         <div className="profile-switch">
-          <div className="avatar">JB</div>
-          <div className="profile-copy"><strong>Jay Borhade</strong><small>Community member</small></div>
+          <div className="avatar">{(profileName || 'Guest').slice(0,2).toUpperCase()}</div>
+          <div className="profile-copy"><strong>{profileName || 'Guest user'}</strong><small>{apiUser ? 'Connected account' : 'Demo profile'}</small></div>
           <ChevronDown size={16} className="muted" />
         </div>
       </aside>
@@ -117,12 +407,12 @@ export default function App() {
         <header className="topbar">
           <div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{activePage}</strong></div>
           <div className="topbar-actions">
-            <div className="location-pill"><MapPin size={15} /><span>Pune, Maharashtra</span><ChevronDown size={14} /></div>
+            <div className="location-pill"><MapPin size={15} /><span>{profileArea || 'Set your location'}</span><ChevronDown size={14} /></div>
             <div className="notification-wrap">
-              <button className="icon-button" aria-label="Notifications" onClick={() => setShowNotifications(!showNotifications)}><Bell size={19} /><i /></button>
-              {showNotifications && <div className="notification-popover"><strong>You’re all caught up</strong><p>New tasks and community updates will appear here.</p></div>}
+              <button className="icon-button" aria-label={`Notifications${unreadNotificationCount ? `, ${unreadNotificationCount} unread` : ''}`} aria-expanded={showNotifications} onClick={() => setShowNotifications(!showNotifications)}><Bell size={19} />{unreadNotificationCount > 0 && <span className="notification-count">{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button>
+              {showNotifications && <div className="notification-popover"><div className="notification-popover-head"><strong>Notifications</strong>{backendConnected && unreadNotificationCount > 0 && <button type="button" onClick={() => void markAllNotificationsRead()}>Mark all read</button>}</div>{!backendConnected ? <p>Sign in to receive live task and community updates.</p> : notifications.length === 0 ? <p>You’re all caught up. Task and drive updates will appear here.</p> : <div className="notification-list">{notifications.map((notification) => <button type="button" key={notification.id} className={notification.read_at ? 'notification-item read' : 'notification-item unread'} onClick={() => void openNotification(notification)}><strong>{notification.title}</strong><span>{notification.body}</span><small>{new Date(notification.created_at).toLocaleString()}</small></button>)}</div>}</div>}
             </div>
-            <button className="top-avatar" aria-label="Open profile" onClick={() => navigate('Profile')}>JB</button>
+            <button className="top-avatar" aria-label="Open profile" onClick={() => navigate('Profile')}>{(profileName || 'G').slice(0,1).toUpperCase()}</button>
           </div>
         </header>
 
@@ -131,27 +421,29 @@ export default function App() {
           {activePage === 'Overview' && (
             <>
               <section className="welcome-row">
-                <div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR COMMUNITY, YOUR IMPACT</div><h1>Welcome back, Jay <span className="wave">✳</span></h1><p className="subheading">Small actions. Cleaner neighbourhoods. A greener tomorrow.</p></div>
+                <div><div className="eyebrow"><span className="eyebrow-dot" /> YOUR COMMUNITY, YOUR IMPACT</div><h1>Welcome{profileName ? `, ${profileName}` : ''} <span className="wave">✳</span></h1><p className="subheading">Small actions. Cleaner neighbourhoods. A greener tomorrow.</p></div>
                 <button className="primary-button" onClick={() => setShowPostModal(true)}><Plus size={18} /> Post a task</button>
               </section>
               <section className="hero-card">
                 <div className="hero-content"><div className="hero-tag"><Leaf size={14} /> YOUR GREEN JOURNEY</div><h2>Good things grow<br />when we <em>grow together.</em></h2><p>Find meaningful local tasks, lend a hand, and make your corner of India a little greener.</p><button className="hero-button" onClick={() => navigate('Explore')}>Explore nearby tasks <ArrowRight size={16} /></button></div>
                 <div className="hero-art" aria-hidden="true"><div className="sun-disc" /><div className="art-hill hill-back" /><div className="art-hill hill-front" /><div className="art-tree tree-one"><span /><i /></div><div className="art-tree tree-two"><span /><i /></div><div className="art-leaf leaf-one"><Leaf size={42} /></div><div className="art-leaf leaf-two"><Leaf size={29} /></div><div className="art-sprout"><Sprout size={72} /></div></div>
               </section>
+              <div className="demo-disclaimer"><ShieldCheck size={15} /> Preview data only — impact figures and sample opportunities are illustrative, not verified community totals.</div>
               <section className="stats-grid">
-                <StatCard icon={<CheckCircle2 size={19} />} label="Tasks completed" value="12" change="+3 this month" />
-                <StatCard icon={<Clock3 size={19} />} label="Volunteer hours" value="18.5" change="+4.5 this month" />
-                <StatCard icon={<TreePine size={19} />} label="Trees planted" value="24" change="Across 3 drives" />
-                <StatCard icon={<Recycle size={19} />} label="Waste collected" value="32 kg" change="Community total" />
+                <StatCard icon={<CheckCircle2 size={19} />} label="Tasks completed" value="Sample" change="Demo data" />
+                <StatCard icon={<Clock3 size={19} />} label="Volunteer hours" value="Sample" change="Demo data" />
+                <StatCard icon={<TreePine size={19} />} label="Trees planted" value="Sample" change="Demo data" />
+                <StatCard icon={<Recycle size={19} />} label="Waste collected" value="Sample" change="Demo data" />
               </section>
               <section className="content-grid">
                 <div className="section-card task-section">
                   <div className="section-heading"><div><h3>Tasks near you</h3><p>Make a difference right around the corner.</p></div><button className="text-link" onClick={() => navigate('Explore')}>View all <ArrowRight size={15} /></button></div>
-                  <div className="task-list">{filteredTasks.slice(0, 3).map((task) => <TaskRow key={task.id} task={task} onOpen={() => { setActivePage('Explore'); setSearch(task.title); }} />)}</div>
+                  <div className="task-list">{filteredTasks.slice(0, 3).map((task) => <TaskRow key={task.id} task={task} onOpen={() => setSelectedTask(task)} />)}</div>
                 </div>
                 <div className="section-card drives-section">
                   <div className="section-heading"><div><h3>Community drives</h3><p>Better together.</p></div><button className="round-arrow" onClick={() => navigate('Community')} aria-label="View community drives"><ArrowRight size={17} /></button></div>
-                  {drives.map((drive, index) => <div className="drive-row" key={drive.title}><div className={'drive-image drive-image-' + index}>{index === 0 ? <Waves size={25} /> : <TreePine size={25} />}</div><div className="drive-info"><strong>{drive.title}</strong><span><CalendarDays size={13} /> {drive.date}</span><small><MapPin size={13} /> {drive.place}</small><button className={joinedDrives.includes(drive.title) ? 'join-link joined' : 'join-link'} onClick={() => joinDrive(drive.title)}>{joinedDrives.includes(drive.title) ? 'Joined ✓' : 'Join drive'} <ArrowRight size={13} /></button></div></div>)}
+                  {backendConnected && <p className="demo-disclaimer">Illustrative preview — open Community for live drives and real participation.</p>}
+                  {drives.map((drive, index) => <div className="drive-row" key={drive.title}><div className={'drive-image drive-image-' + index}>{index === 0 ? <Waves size={25} /> : <TreePine size={25} />}</div><div className="drive-info"><strong>{drive.title}</strong><span><CalendarDays size={13} /> {drive.date}</span><small><MapPin size={13} /> {drive.place}</small><button className={!backendConnected && joinedDrives.includes(drive.title) ? 'join-link joined' : 'join-link'} onClick={() => backendConnected ? navigate('Community') : joinDrive(drive.title)}>{backendConnected ? 'View live drives' : joinedDrives.includes(drive.title) ? 'Joined ✓' : 'Join drive'} <ArrowRight size={13} /></button></div></div>)}
                 </div>
               </section>
               <section className="bottom-quote"><div className="quote-icon"><HandHeart size={21} /></div><div><strong>One neighbourhood at a time.</strong><p>Every task you take on helps build a cleaner, more connected community.</p></div><button onClick={() => navigate('My impact')}>See your impact <ArrowRight size={15} /></button></section>
@@ -160,21 +452,38 @@ export default function App() {
 
           {activePage === 'Explore' && (
             <><section className="welcome-row"><div><div className="eyebrow"><span className="eyebrow-dot" /> FIND YOUR NEXT GOOD DEED</div><h1>Explore nearby tasks</h1><p className="subheading">Local opportunities to make a real difference.</p></div><button className="primary-button" onClick={() => setShowPostModal(true)}><Plus size={18} /> Post a task</button></section>
-              <div className="explore-toolbar"><div className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, skills, or locations..." /></div><div className="radius-control"><MapPin size={16} /><span>Within</span><select value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius"><option value={1}>1 km</option><option value={3}>3 km</option><option value={5}>5 km</option><option value={10}>10 km</option><option value={25}>25 km</option></select></div><div className="filter-control"><Filter size={16} /><select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Task category"><option>All tasks</option><option>Community cleanup</option><option>Tree plantation</option><option>Green spaces</option><option>Waterbody cleanup</option></select></div></div>
-              <div className="explore-layout"><div className="explore-results"><div className="results-caption"><strong>{filteredTasks.length} opportunities</strong><span>Sorted by distance</span></div>{filteredTasks.map((task) => <TaskRow key={task.id} task={task} onOpen={() => setNotice('Task selected: ' + task.title + '. Requirement checks and task acceptance will be connected in the next workflow batch.')} expanded />)}{filteredTasks.length === 0 && <div className="empty-state"><Leaf size={30} /><strong>No tasks match those filters</strong><p>Try a wider radius or a different search.</p><button className="secondary-button" onClick={() => { setRadius(10); setCategory('All tasks'); setSearch(''); }}>Clear filters</button></div>}</div>
-                <div className="map-panel"><div className="map-header"><strong><MapPin size={16} /> Task map</strong><span>Illustrative preview</span></div><div className="map-canvas"><div className="map-water" /><div className="map-park park-a" /><div className="map-park park-b" /><div className="map-road road-a" /><div className="map-road road-b" /><div className="map-road road-c" /><span className="map-label label-a">AUNDH</span><span className="map-label label-b">BANER</span><span className="map-label label-c">PASHAN LAKE</span>{filteredTasks.slice(0, 4).map((task, i) => <button key={task.id} className={'map-pin pin-' + i} onClick={() => setNotice(task.title + ' · ' + task.distance + ' km away')} aria-label={'Select ' + task.title}><Leaf size={15} /></button>)}<div className="map-home"><MapPin size={18} /></div></div><div className="map-legend"><span><i className="legend-dot" /> Open tasks</span><span><i className="legend-home" /> Your area</span></div><p className="map-note">Map is a visual placeholder. Live geocoding and map tiles will be connected in the integration milestone.</p></div></div>
+              <div className="explore-toolbar"><button className="secondary-button" onClick={requestCurrentLocation} disabled={locationBusy}>{locationBusy ? "Locating…" : currentCoordinates ? "Location enabled ✓" : "Use my location"}</button><div className="search-box"><Search size={18} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search tasks, skills, or locations..." /></div><div className="radius-control"><MapPin size={16} /><span>Within</span><select value={radius} onChange={(e) => setRadius(Number(e.target.value))} aria-label="Search radius"><option value={1}>1 km</option><option value={3}>3 km</option><option value={5}>5 km</option><option value={10}>10 km</option><option value={25}>25 km</option></select></div><div className="filter-control"><Filter size={16} /><select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Task category"><option>All tasks</option><option>Community cleanup</option><option>Tree plantation</option><option>Green spaces</option><option>Waterbody cleanup</option></select></div></div>
+              <div className="explore-layout"><div className="explore-results"><div className="results-caption"><strong>{filteredTasks.length} opportunities</strong><span>Sorted by distance</span></div>{filteredTasks.map((task) => <TaskRow key={task.id} task={task} onOpen={() => setSelectedTask(task)} expanded />)}{filteredTasks.length === 0 && <div className="empty-state"><Leaf size={30} /><strong>No tasks match those filters</strong><p>Try a wider radius or a different search.</p><button className="secondary-button" onClick={() => { setRadius(10); setCategory('All tasks'); setSearch(''); }}>Clear filters</button></div>}</div>
+                <InteractiveMap tasks={filteredTasks} origin={currentCoordinates} onSelect={(task) => { const selected = tasks.find((item) => item.id === task.id); if (selected) setSelectedTask({ ...selected, distance: task.distance }); }} /></div>
             </>
           )}
 
-          {activePage === 'Community' && <><section className="welcome-row"><div><div className="eyebrow"><span className="eyebrow-dot" /> MAKE CHANGE TOGETHER</div><h1>Community drives</h1><p className="subheading">Show up for your neighbourhood and the planet.</p></div></section><div className="community-banner"><div><HandHeart size={28} /><h2>Good work grows in good company.</h2><p>Join local cleanups, plantation events, and community-led environmental action.</p></div><div className="community-banner-art"><TreePine size={90} /><Sprout size={55} /></div></div><div className="drive-cards">{drives.map((drive, i) => <article className="drive-card" key={drive.title}><div className={'drive-card-art art-' + i}>{i === 0 ? <Waves size={44} /> : <TreePine size={44} />}<span>{i === 0 ? 'WATERBODY CARE' : 'URBAN GREENING'}</span></div><div className="drive-card-body"><span className="event-date"><CalendarDays size={14} /> {drive.date}</span><h3>{drive.title}</h3><p><MapPin size={14} /> {drive.place}</p><div className="drive-card-footer"><span><Users size={15} /> {drive.joined + (joinedDrives.includes(drive.title) ? 1 : 0)} people joining</span><button className={joinedDrives.includes(drive.title) ? 'secondary-button' : 'primary-button'} onClick={() => joinDrive(drive.title)}>{joinedDrives.includes(drive.title) ? 'You’re joining' : 'Join drive'}</button></div></div></article>)}</div></>}
+          {activePage === 'Workers' && <WorkerDirectory backendConnected={backendConnected} onNotice={setNotice} onExplore={() => navigate('Explore')} />}
 
-          {activePage === 'Messages' && <SimplePage icon={<MessageCircle size={28} />} title="Your conversations" description="Task-based conversations will live here so requesters and workers can coordinate clearly." action="Explore tasks" onAction={() => navigate('Explore')} />}
-          {activePage === 'My impact' && <><section className="welcome-row"><div><div className="eyebrow"><span className="eyebrow-dot" /> EVERY ACTION COUNTS</div><h1>Your impact, in action</h1><p className="subheading">A little progress, repeated, can change a neighbourhood.</p></div></section><section className="stats-grid impact-stats"><StatCard icon={<CheckCircle2 size={19} />} label="Tasks completed" value="12" change="All-time total" /><StatCard icon={<Clock3 size={19} />} label="Volunteer hours" value="18.5" change="Time given back" /><StatCard icon={<TreePine size={19} />} label="Trees planted" value="24" change="Across 3 drives" /><StatCard icon={<Recycle size={19} />} label="Waste collected" value="32 kg" change="Community total" /></section><div className="section-card achievement-card"><div className="achievement-badge"><Sprout size={32} /></div><div><span className="eyebrow">CURRENT ACHIEVEMENT</span><h2>Green Neighbour · Level 2</h2><p>Keep showing up. Your next milestone is 20 completed tasks.</p><div className="achievement-progress"><span /></div><small>12 of 20 tasks completed</small></div></div><div className="section-card"><div className="section-heading"><div><h3>Your contribution history</h3><p>Recent community activity</p></div></div><div className="history-row"><span className="history-icon"><Leaf size={18} /></span><div><strong>Neighbourhood park cleanup</strong><p>Community cleanup · Aundh</p></div><span className="history-date">Oct 04</span><span className="status-chip complete">Completed</span></div><div className="history-row"><span className="history-icon"><TreePine size={18} /></span><div><strong>Native sapling plantation</strong><p>Community drive · Baner</p></div><span className="history-date">Sep 28</span><span className="status-chip complete">Completed</span></div></div></>}
-          {(activePage === 'Settings' || activePage === 'Profile') && <SimplePage icon={<ShieldCheck size={28} />} title={activePage === 'Profile' ? 'Your community profile' : 'Settings & preferences'} description="Profile verification, skills, preferred radius, and account preferences will be configured here in the identity and trust milestone." action="Back to overview" onAction={() => navigate('Overview')} />}
+          {activePage === 'Community' && <LiveCommunity backendConnected={backendConnected} onNotice={setNotice} />}
+
+          {activePage === 'Messages' && <LiveMessages backendConnected={backendConnected} currentUser={apiUser} onNotice={setNotice} />}
+          {activePage === 'My impact' && <LiveImpact backendConnected={backendConnected} onNotice={setNotice} />}
+          {(activePage === 'Settings' || activePage === 'Profile') && (activePage === 'Profile' ? (apiUser && backendConnected ? <LiveProfile user={apiUser} onUpdated={(user) => { setApiUser(user); setProfileName(user.display_name); setProfileArea(user.locality); setPurpose(user.purpose); }} onNotice={setNotice} /> : <SimplePage icon={<ShieldCheck size={28} />} title="Your community profile" description="Sign in to manage your server-backed profile." action="Open settings" onAction={() => navigate('Settings')} />) : <section className="section-card" style={{ maxWidth: 680, margin: '0 auto' }}><div className="section-heading"><div><h3>Backend connection</h3><p>Connect this interface to your local SAVJ API.</p></div><span className={backendConnected ? 'status-badge status-completed' : 'status-badge'}>{backendConnected ? 'Connected' : 'Demo mode'}</span></div><p className="subheading">API address: {import.meta.env.VITE_SAVJ_API_URL || (import.meta.env.PROD ? 'Same-origin /api' : 'http://127.0.0.1:8000')}</p>{apiUser ? <><p>Signed in as <strong>{apiUser.display_name}</strong> ({apiUser.email}). Task listings and new tasks use the backend database.</p><button className="secondary-button" onClick={signOut}>Sign out</button></> : <form className="post-modal" style={{ position: 'static', width: '100%', maxWidth: 'none', boxShadow: 'none', padding: 0, marginTop: 20 }} onSubmit={signInOrRegister}><div className="onboarding-options"><button type="button" className={authMode === 'login' ? 'onboarding-choice selected' : 'onboarding-choice'} onClick={() => setAuthMode('login')}>Sign in</button><button type="button" className={authMode === 'register' ? 'onboarding-choice selected' : 'onboarding-choice'} onClick={() => setAuthMode('register')}>Create account</button></div><label>Email<input type="email" required value={apiEmail} onChange={(event) => setApiEmail(event.target.value)} autoComplete="email" /></label><label>Password<input type="password" required minLength={authMode === 'register' ? 10 : 1} maxLength={128} value={apiPassword} onChange={(event) => setApiPassword(event.target.value)} autoComplete={authMode === 'register' ? 'new-password' : 'current-password'} /></label>{authMode === 'register' && <label>Tools you can use (comma-separated)<input value={apiTools} onChange={(event) => setApiTools(event.target.value)} placeholder="e.g. Gloves, Shovel" maxLength={500} /></label>}<p className="modal-footnote">{authMode === 'register' ? 'Use at least 10 characters. Your password is sent to your configured backend over your local connection.' : 'Sign in to load your server-backed tasks.'}</p><button className="primary-button" type="submit" disabled={apiBusy}>{apiBusy ? 'Connecting…' : authMode === 'register' ? 'Create account' : 'Sign in'} <ArrowRight size={16}/></button>{authMode === 'login' && <div className="onboarding-actions"><button type="button" className="secondary-button" onClick={() => void requestPasswordResetEmail()}>Forgot password?</button><button type="button" className="secondary-button" onClick={() => void requestVerificationEmail()}>Resend verification</button></div>}</form>}</section>)}
         </div>
       </main>
 
-      {showPostModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPostModal(false); }}><form className="post-modal" onSubmit={postTask}><div className="modal-heading"><div><span className="eyebrow">START SOMETHING GOOD</span><h2>Post a community task</h2><p>Tell your neighbourhood what needs doing.</p></div><button type="button" className="icon-button" onClick={() => setShowPostModal(false)} aria-label="Close modal"><X size={20} /></button></div><label>Task title<input required value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Clean our society garden" /></label><label>Location<input required value={taskLocation} onChange={(e) => setTaskLocation(e.target.value)} placeholder="Area or neighbourhood" /></label><label>Budget (₹)<input type="number" min="0" value={taskBudget} onChange={(e) => setTaskBudget(e.target.value)} /></label><label>What needs to be done?<textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Add details, expectations, or timing..." rows={3} /></label><div className="modal-footnote"><ShieldCheck size={16} /> Keep task details clear and community-friendly.</div><button className="primary-button submit-task" type="submit"><Plus size={17} /> Publish task to demo feed</button></form></div>}
+      {authAction === 'verify-email' && <div className="modal-backdrop"><div className="post-modal"><div className="modal-heading"><div><span className="eyebrow">SAVJ ACCOUNT SECURITY</span><h2>Verify your email</h2><p>Confirm your email address to activate your SAVJ account.</p></div></div>{!authActionToken && <p role="alert">The verification token is missing from this link.</p>}<div className="onboarding-actions"><button type="button" className="secondary-button" onClick={clearAuthAction}>Close</button><button type="button" className="primary-button" disabled={authActionBusy || !authActionToken} onClick={() => void verifyEmailFromLink()}>{authActionBusy ? 'Verifying…' : 'Verify email'}</button></div></div></div>}
+      {authAction === 'reset-password' && <div className="modal-backdrop"><form className="post-modal" onSubmit={resetPasswordFromLink}><div className="modal-heading"><div><span className="eyebrow">SAVJ ACCOUNT SECURITY</span><h2>Choose a new password</h2><p>Use at least 10 characters. This link can only be used once.</p></div></div><label>New password<input type="password" required minLength={10} maxLength={128} autoComplete="new-password" value={authActionPassword} onChange={(event) => setAuthActionPassword(event.target.value)} /></label><div className="onboarding-actions"><button type="button" className="secondary-button" onClick={clearAuthAction}>Cancel</button><button type="submit" className="primary-button" disabled={authActionBusy || !authActionToken || authActionPassword.length < 10}>{authActionBusy ? 'Updating…' : 'Reset password'}</button></div></form></div>}
+      {!onboardingDone && !authAction && <div className="modal-backdrop onboarding-backdrop"><form className="post-modal onboarding-modal" onSubmit={(e) => { e.preventDefault(); if (onboardingStep === 0) { if (!profileName.trim() || !profileArea.trim()) { setNotice('Please enter your name and area.'); return; } setOnboardingStep(1); return; } if (onboardingStep === 1) { setOnboardingStep(2); return; } writeLocalStorage('savj.onboardingDone','true'); writeLocalStorage('savj.purpose',purpose); setOnboardingDone(true); setNotice('Welcome to SAVJ demo, ' + profileName.trim() + '! Your profile is saved in this browser.'); }}><div className="modal-heading"><div><span className="eyebrow">WELCOME TO SAVJ · STEP {onboardingStep+1} OF 3</span><h2>{onboardingStep===0?'Let’s get to know you':onboardingStep===1?'How would you like to contribute?':'Make SAVJ yours'}</h2><p>{onboardingStep===0?'Set up your local demo profile.':onboardingStep===1?'You can change this preference later.':'Choose skills to personalize task discovery.'}</p></div></div>{onboardingStep===0 ? <><label>Your name<input required maxLength={60} value={profileName} onChange={(e)=>setProfileName(e.target.value)} placeholder="Enter your name" /></label><label>Your area or locality<input required maxLength={100} value={profileArea} onChange={(e)=>setProfileArea(e.target.value)} placeholder="e.g. Pune, Maharashtra" /></label></> : onboardingStep===1 ? <div className="onboarding-options">{['Requester','Worker','Volunteer','Both'].map((item)=><button type="button" key={item} className={purpose===item?'onboarding-choice selected':'onboarding-choice'} onClick={()=>setPurpose(item)}><strong>{item}</strong><span>{item==='Requester'?'Post tasks for your neighbourhood':item==='Worker'?'Discover paid local tasks':item==='Volunteer'?'Join environmental drives':'Post, work and volunteer'}</span></button>)}</div> : <><p className="onboarding-label">Your skills (optional)</p><div className="onboarding-skills">{['Cleanup','Gardening','Plantation','Waste sorting','General helper'].map((skill)=><button type="button" key={skill} className={onboardingSkills.includes(skill)?'skill-option selected':'skill-option'} onClick={()=>setOnboardingSkills((old)=>old.includes(skill)?old.filter((x)=>x!==skill):[...old,skill])}>{onboardingSkills.includes(skill)?'✓ ': '+ '}{skill}</button>)}</div><p className="modal-footnote">Demo only: profile data stays in this browser. Sign-in, KYC and backend sync are not connected.</p></>}<div className="onboarding-actions">{onboardingStep>0&&<button type="button" className="secondary-button" onClick={()=>setOnboardingStep((n)=>n-1)}>Back</button>}<button className="primary-button submit-task" type="submit">{onboardingStep===2?'Finish setup':'Continue'} <ArrowRight size={16}/></button></div></form></div>}
+      {selectedTask && <div className="modal-backdrop" onMouseDown={(e)=>{if(e.target===e.currentTarget)setSelectedTask(null)}}><section className="post-modal"><div className="modal-heading"><div><span className="eyebrow">TASK DETAILS · {backendConnected ? 'LIVE' : 'DEMO'}</span><h2>{selectedTask.title}</h2><p>{selectedTask.category} · {selectedTask.distance} km away</p></div><button type="button" className="icon-button" onClick={()=>setSelectedTask(null)} aria-label="Close task details"><X size={20}/></button></div><p>{selectedTask.description}</p><div className="task-detail-meta"><span><MapPin size={15}/> {selectedTask.location}</span><span><CalendarDays size={15}/> {selectedTask.date}</span><strong>₹{selectedTask.budget.toLocaleString('en-IN')}</strong></div><p><strong>Required skills:</strong> {selectedTask.skills.length ? selectedTask.skills.join(', ') : 'None specified'}</p><p><strong>Required tools:</strong> {(selectedTask.tools || []).length ? (selectedTask.tools || []).join(', ') : 'None specified'}</p><p><strong>Status:</strong> {selectedTask.status}</p>
+      {backendConnected && selectedTask.status==='Awaiting approval' && <TaskProofViewer taskId={selectedTask.id} onNotice={setNotice} />}
+      {selectedTask.status==='In progress'&&(!backendConnected||(apiUser&&selectedTask.workerId===apiUser.id))&&<div className="proof-fields"><label>Before photo (required)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(e)=>{const file=e.target.files?.[0]||null;setBeforeProofFile(file);setBeforeProofName(file?.name||'');}}/></label><label>After photo (required)<input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(e)=>{const file=e.target.files?.[0]||null;setAfterProofFile(file);setAfterProofName(file?.name||'');}}/></label><small>Images upload to private backend storage (JPEG, PNG or WebP; max 8 MB each) when signed in. Demo mode only checks file selection.</small></div>}
+      {selectedTask.status==='Completed'&&backendConnected&&apiUser&&selectedTask.requesterId===apiUser.id&&<section className="section-card task-rating-panel"><h3>Rate your experience</h3>{ratingLoading?<p>Loading rating…</p>:taskRating?<><p><strong>Your rating:</strong> {'★'.repeat(taskRating.score)} ({taskRating.score}/5)</p>{taskRating.comment&&<p>{taskRating.comment}</p>}<small>One rating is allowed per completed task.</small></>:<form onSubmit={submitTaskRating}><label>Rating<select value={ratingScore} onChange={(event)=>setRatingScore(Number(event.target.value))}><option value={5}>5 — Excellent</option><option value={4}>4 — Good</option><option value={3}>3 — Okay</option><option value={2}>2 — Poor</option><option value={1}>1 — Very poor</option></select></label><label>Comment (optional)<textarea value={ratingComment} onChange={(event)=>setRatingComment(event.target.value)} maxLength={1000} rows={3} placeholder="Share a short, respectful review."/></label><button type="submit" className="primary-button" disabled={ratingBusy}>{ratingBusy?'Submitting…':'Submit rating'}</button></form>}</section>}
+      <div className="demo-disclaimer"><ShieldCheck size={15}/> Task actions use the backend when connected. Proof uploads are private and participant-authorized; in-app notifications are enabled for task and drive activity; KYC verification is not yet available.</div>
+      <div className="onboarding-actions"><button type="button" className="secondary-button" onClick={()=>setSelectedTask(null)}>Close</button>
+      {selectedTask.status!=='Completed'&&selectedTask.status!=='Cancelled'&&(!backendConnected||(apiUser&&(selectedTask.requesterId===apiUser.id||selectedTask.workerId===apiUser.id)))&&<button type="button" className="secondary-button" onClick={async()=>{if(!window.confirm('Cancel this task? This cannot be undone after cancellation.'))return;if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'cancel'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task cancelled on the SAVJ backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not cancel task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Cancelled');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task cancelled in this browser demo.');}}>Cancel task</button>}
+      {selectedTask.status==='Open'&&backendConnected&&apiUser&&missingRequirements(selectedTask,apiUser).length>0&&<p className="requirement-warning">Your profile is missing: {missingRequirements(selectedTask,apiUser).join(', ')}. Update your skills and tools before accepting.</p>}{selectedTask.status==='Open'&&(!backendConnected||(apiUser&&selectedTask.requesterId!==apiUser.id&&apiUser.purpose!=='Requester'&&missingRequirements(selectedTask,apiUser).length===0))&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'accept'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task accepted by the SAVJ backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not accept task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Accepted');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Task accepted in this browser demo. No requester has been notified.');}}>{backendConnected?'Accept task':'Accept in demo'}</button>}
+      {selectedTask.status==='Accepted'&&(!backendConnected||(apiUser&&selectedTask.workerId===apiUser.id))&&<button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'start'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Task started on the backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not start task.');}return;}const result=transitionTaskStatus(selectedTask.status,'In progress');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});}}>Start task {backendConnected?'':'(demo)'}</button>}
+      {selectedTask.status==='In progress'&&(!backendConnected||(apiUser&&selectedTask.workerId===apiUser.id))&&<button type="button" className="primary-button" disabled={!beforeProofName||!afterProofName} onClick={async()=>{if(backendConnected){if(!beforeProofFile||!afterProofFile){setNotice('Choose both before and after images.');return;}try{await savjApi.uploadProof(selectedTask.id,'before',beforeProofFile);await savjApi.uploadProof(selectedTask.id,'after',afterProofFile);const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'submit'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setBeforeProofFile(null);setAfterProofFile(null);setBeforeProofName('');setAfterProofName('');setNotice('Before and after proof images uploaded securely. Task submitted for requester approval.');}catch(error){setNotice(error instanceof Error?error.message:'Could not upload proof images.');}return;}const result=transitionTaskStatus(selectedTask.status,'Awaiting approval');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Both proof files selected. Nothing was uploaded; task awaits demo approval.');}}> {backendConnected?'Upload & submit proof':'Submit proof (demo)'}</button>}
+      {selectedTask.status==='Awaiting approval'&&(!backendConnected||(apiUser&&selectedTask.requesterId===apiUser.id))&&<><button type="button" className="secondary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'start'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Rework requested. The assigned worker can update and resubmit the task.');}catch(error){setNotice(error instanceof Error?error.message:'Could not request rework.');}return;}const result=transitionTaskStatus(selectedTask.status,'In progress');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Rework requested in this browser demo.');}}>Request rework</button><button type="button" className="primary-button" onClick={async()=>{if(backendConnected){try{const updated=fromApiTask(await savjApi.transitionTask(selectedTask.id,'approve'));setTasks((all)=>all.map((t)=>t.id===updated.id?updated:t));setSelectedTask(updated);setNotice('Completion approved by the backend.');}catch(error){setNotice(error instanceof Error?error.message:'Could not approve task.');}return;}const result=transitionTaskStatus(selectedTask.status,'Completed');if(!result.ok){setNotice(result.reason);return;}setTasks((all)=>all.map((t)=>t.id===selectedTask.id?{...t,status:result.status}:t));setSelectedTask({...selectedTask,status:result.status});setNotice('Demo task marked complete. No real requester approval was recorded.');}}>{backendConnected?'Approve completion':'Simulate requester approval'}</button></>}
+      </div></section></div>}
+      {showPostModal && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPostModal(false); }}><form className="post-modal" onSubmit={postTask}><div className="modal-heading"><div><span className="eyebrow">START SOMETHING GOOD</span><h2>Post a community task</h2><p>Tell your neighbourhood what needs doing.</p></div><button type="button" className="icon-button" onClick={() => setShowPostModal(false)} aria-label="Close modal"><X size={20} /></button></div><label>Task title<input required value={taskTitle} onChange={(e) => setTaskTitle(e.target.value)} placeholder="e.g. Clean our society garden" /></label><label>Location<input required value={taskLocation} onChange={(e) => setTaskLocation(e.target.value)} placeholder="Area or neighbourhood" /></label><label>Task category<select value={taskCategory} onChange={(e) => setTaskCategory(e.target.value)}><option>Community cleanup</option><option>Tree plantation</option><option>Green spaces</option><option>Waterbody cleanup</option><option>Waste sorting</option><option>Gardening</option><option>General helper</option></select></label><label>Required skills (comma-separated)<input value={taskRequiredSkills} onChange={(e) => setTaskRequiredSkills(e.target.value)} placeholder="e.g. Gardening, Cleanup" maxLength={500} /></label><label>Required tools (comma-separated)<input value={taskRequiredTools} onChange={(e) => setTaskRequiredTools(e.target.value)} placeholder="e.g. Gloves, Grabbers" maxLength={500} /></label><label>Schedule (optional)<input type="datetime-local" value={taskScheduledAt} onChange={(e) => setTaskScheduledAt(e.target.value)} /></label><label>Budget (₹)<input type="number" min="0" value={taskBudget} onChange={(e) => setTaskBudget(e.target.value)} /></label><button type="button" className="secondary-button" onClick={tagTaskLocation} disabled={locationBusy}>{taskCoordinates ? "Task location tagged ✓" : "Tag task at my current location"}</button><p className="modal-footnote">Coordinates are optional and only attached when you explicitly tag this task.</p><label>What needs to be done?<textarea value={taskDescription} onChange={(e) => setTaskDescription(e.target.value)} placeholder="Add details, expectations, or timing..." rows={3} /></label><div className="modal-footnote"><ShieldCheck size={16} /> Keep task details clear and community-friendly.</div><button className="primary-button submit-task" type="submit"><Plus size={17} /> Publish task</button></form></div>}
     </div>
   );
 }
