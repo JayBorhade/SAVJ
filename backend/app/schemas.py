@@ -78,6 +78,17 @@ class TokenOut(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: UserOut
+    requires_email_verification: bool = False
+
+class EmailAddressRequest(BaseModel):
+    email: EmailStr
+
+class EmailTokenRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
 
 class TaskCreate(BaseModel):
     title: str = Field(min_length=3, max_length=120)
