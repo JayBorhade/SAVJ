@@ -35,6 +35,34 @@ def test_health_auth_and_duplicate_email():
     assert client.post("/api/v1/auth/login",json={"email":"requester@example.com","password":"test-password-123"}).status_code == 200
     assert client.post("/api/v1/auth/login",json={"email":"requester@example.com","password":"wrong-password"}).status_code == 401
 
+def test_api_rejects_naive_or_past_schedules_and_blank_profile_fields():
+    token, _ = register("schedule-validation@example.com", "Schedule Validation")
+    headers = auth(token)
+    base_task = {"title": "Scheduled cleanup", "location_text": "Pune", "budget_rupees": 100}
+    naive_task = client.post(
+        "/api/v1/tasks", headers=headers,
+        json={**base_task, "scheduled_at": "2030-10-10T07:30:00"},
+    )
+    assert naive_task.status_code == 422
+    past_task = client.post(
+        "/api/v1/tasks", headers=headers,
+        json={**base_task, "scheduled_at": "2000-10-10T07:30:00Z"},
+    )
+    assert past_task.status_code == 422
+    naive_drive = client.post(
+        "/api/v1/drives", headers=headers,
+        json={"title": "Future cleanup", "location_text": "Pune", "starts_at": "2030-10-10T07:30:00"},
+    )
+    assert naive_drive.status_code == 422
+    past_drive = client.post(
+        "/api/v1/drives", headers=headers,
+        json={"title": "Past cleanup", "location_text": "Pune", "starts_at": "2000-10-10T07:30:00Z"},
+    )
+    assert past_drive.status_code == 422
+    assert client.patch("/api/v1/me", headers=headers, json={"display_name": "   "}).status_code == 422
+    assert client.patch("/api/v1/me", headers=headers, json={"skills": ["x" * 81]}).status_code == 422
+
+
 def test_logout_revokes_previous_access_tokens():
     token, _ = register("logout@example.com", "Logout User")
     assert client.get("/api/v1/me", headers=auth(token)).status_code == 200
