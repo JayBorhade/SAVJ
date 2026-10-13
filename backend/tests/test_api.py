@@ -38,15 +38,23 @@ def test_health_auth_and_duplicate_email():
 def test_task_lifecycle_permissions_and_impact():
     requester_token, _ = register("owner@example.com","Owner")
     worker_token, worker = register("worker@example.com","Worker")
+    outsider_token, _ = register("taskoutsider@example.com","Outsider")
     created = client.post("/api/v1/tasks",json={"title":"Clean community garden","description":"Collect litter","location_text":"Pune","budget_rupees":500},headers=auth(requester_token))
     assert created.status_code == 201, created.text
     task = created.json()
     assert task["budget_minor_units"] == 50000
+    # Open tasks are discoverable, but private task details are hidden after acceptance.
+    assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token)).status_code == 200
     assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(requester_token)).status_code == 403
     accepted = client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(worker_token))
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["worker_id"] == worker["id"]
+    assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token)).status_code == 404
     assert client.post(f"/api/v1/tasks/{task['id']}/start",headers=auth(worker_token)).status_code == 200
+    assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
+    # Requesters can ask for rework; the assigned worker can resubmit.
+    rework = client.post(f"/api/v1/tasks/{task['id']}/start",headers=auth(requester_token))
+    assert rework.status_code == 200 and rework.json()["status"] == "In progress"
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
     assert client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(worker_token)).status_code == 403
     completed = client.post(f"/api/v1/tasks/{task['id']}/approve",headers=auth(requester_token))
