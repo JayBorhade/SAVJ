@@ -375,11 +375,24 @@ def update_me(payload: UserUpdate, user: CurrentUser, db: Database) -> UserOut:
 
 @app.post("/api/v1/tasks", response_model=TaskOut, status_code=201)
 def create_task(payload: TaskCreate, user: CurrentUser, db: Database) -> Task:
-    task = Task(requester_id=user.id, title=payload.title.strip(), description=payload.description.strip(), category=payload.category.strip(), required_skills_json=json.dumps(payload.required_skills), required_tools_json=json.dumps(payload.required_tools), location_text=payload.location_text.strip(), latitude=payload.latitude, longitude=payload.longitude, budget_minor_units=payload.budget_rupees * 100, scheduled_at=payload.scheduled_at, status="Open")
+    task = Task(requester_id=user.id, title=payload.title.strip(), description=payload.description.strip(), category=payload.category.strip(), required_skills_json=json.dumps(payload.required_skills), required_tools_json=json.dumps(payload.required_tools), location_text=payload.location_text.strip(), private_location_text=payload.private_location_text, latitude=payload.latitude, longitude=payload.longitude, budget_minor_units=payload.budget_rupees * 100, scheduled_at=payload.scheduled_at, status="Open")
     db.add(task)
     db.commit()
     db.refresh(task)
     return task
+
+def task_response_for_viewer(task: Task, viewer_id: int) -> TaskOut:
+    payload = TaskOut.model_validate(task)
+    # Keep precise household addresses and coordinates private while a task is
+    # open. Browsers see the public locality and coarse map coordinates only.
+    if task.status == "Open" and viewer_id != task.requester_id:
+        payload.private_location_text = None
+        if payload.latitude is not None:
+            payload.latitude = round(payload.latitude, 2)
+        if payload.longitude is not None:
+            payload.longitude = round(payload.longitude, 2)
+    return payload
+
 
 def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
@@ -387,7 +400,7 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 6371.0088 * 2 * asin(sqrt(min(1.0, value)))
 
 @app.get("/api/v1/tasks", response_model=list[TaskOut])
-def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Query(default=None, alias="status"), category: str | None = None, search: str | None = None, latitude: float | None = Query(default=None, ge=-90, le=90), longitude: float | None = Query(default=None, ge=-180, le=180), radius_km: float | None = Query(default=None, gt=0, le=100), limit: int = Query(default=30, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[Task]:
+def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Query(default=None, alias="status"), category: str | None = None, search: str | None = None, latitude: float | None = Query(default=None, ge=-90, le=90), longitude: float | None = Query(default=None, ge=-180, le=180), radius_km: float | None = Query(default=None, gt=0, le=100), limit: int = Query(default=30, ge=1, le=100), offset: int = Query(default=0, ge=0)) -> list[TaskOut]:
     if (latitude is None) != (longitude is None):
         raise HTTPException(status_code=422, detail="Latitude and longitude must be supplied together.")
     if radius_km is not None and latitude is None:
@@ -411,11 +424,12 @@ def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Quer
                             Task.longitude.between(max(-180, longitude-lon_delta), min(180, longitude+lon_delta)))
         candidates = list(db.scalars(query.order_by(Task.created_at.desc())).all())
         nearby = [task for task in candidates if _distance_km(latitude, longitude, task.latitude, task.longitude) <= radius_km]
-        return nearby[offset:offset+limit]
-    return list(db.scalars(query.order_by(Task.created_at.desc()).offset(offset).limit(limit)).all())
+        return [task_response_for_viewer(task, user.id) for task in nearby[offset:offset+limit]]
+    tasks = list(db.scalars(query.order_by(Task.created_at.desc()).offset(offset).limit(limit)).all())
+    return [task_response_for_viewer(task, user.id) for task in tasks]
 
 @app.get("/api/v1/tasks/{task_id}", response_model=TaskOut)
-def get_task(task_id: int, user: CurrentUser, db: Database) -> Task:
+def get_task(task_id: int, user: CurrentUser, db: Database) -> TaskOut:
     task = db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -424,7 +438,7 @@ def get_task(task_id: int, user: CurrentUser, db: Database) -> Task:
     # schedule, budget, or participant identifiers to unrelated accounts.
     if task.status != "Open" and user.id not in {task.requester_id, task.worker_id}:
         raise HTTPException(status_code=404, detail="Task not found.")
-    return task
+    return task_response_for_viewer(task, user.id)
 
 @app.get("/api/v1/tasks/{task_id}/rating", response_model=TaskRatingOut | None)
 def get_task_rating(task_id: int, user: CurrentUser, db: Database) -> TaskRating | None:
