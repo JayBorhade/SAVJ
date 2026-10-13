@@ -216,8 +216,13 @@ def transition(db: Session, task: Task, target: str, actor: User) -> Task:
 
 @app.post("/api/v1/tasks/{task_id}/accept", response_model=TaskOut)
 def accept_task(task_id: int, user: CurrentUser, db: Database) -> Task:
-    task = db.get(Task, task_id)
-    if not task: raise HTTPException(status_code=404, detail="Task not found.")
+    # Lock the task row while checking/assigning its worker to prevent two
+    # concurrent accept requests from both winning on PostgreSQL.
+    task = db.scalar(
+        select(Task).where(Task.id == task_id).with_for_update()
+    )
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
     return transition(db, task, "Accepted", user)
 
 @app.post("/api/v1/tasks/{task_id}/start", response_model=TaskOut)
