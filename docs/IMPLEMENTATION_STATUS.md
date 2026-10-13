@@ -51,7 +51,8 @@ Security PR #18 targets `phase-16/launch-hardening`, not `main`. Phase 17 verifi
 - [x] Use HttpOnly production access cookies, SameSite protection, Origin validation for cookie-authenticated writes, and server-side token-version revocation on logout.
 - [ ] Add refresh-token rotation and a recovery/session-management policy; run browser-based CSRF/XSS acceptance tests.
 - [ ] Add shared/distributed rate limits and quotas at the gateway for all instances.
-- [ ] Implement email verification, password recovery, MFA, and any production identity-provider integration with a configured provider and tested token lifecycle.
+- [x] Implement email verification and password recovery with hashed, single-use expiring tokens, anti-enumeration request endpoints, and SMTP delivery hooks; real SMTP configuration and acceptance testing remain required.
+- [ ] Add MFA/managed identity-provider integration and refresh-token rotation.
 - [ ] Decide whether PostgreSQL RLS is required; otherwise keep and test application-layer authorization with least-privilege DB roles.
 - [ ] Add malware scanning, private object storage, quotas, retention and deletion policies for uploaded proof.
 - [ ] Validate deployment secrets, HTTPS, source-map publication, backups/restore, monitoring, and log redaction.
