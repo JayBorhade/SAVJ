@@ -39,7 +39,8 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 - [ ] Run backend tests, frontend lint/typecheck/build, dependency audits, CodeQL, and secret scanning on the final merged tree; ensure all are green after dependency upgrades.
 - [ ] Commit a generated package-lock.json so frontend dependency resolution and audit results are reproducible.
 - [ ] Configure shared/distributed gateway rate limiting for all instances and add tests for limits, uploads, and cross-account authorization.
-- [ ] Add MFA/account recovery and email verification only with a defined provider and secure token lifecycle.
+- [x] Email verification and password reset now use hashed, single-use expiring tokens, SMTP STARTTLS support, anti-enumeration responses, and per-process abuse limits; live SMTP delivery still needs configuration and acceptance testing.
+- [ ] Add MFA and refresh-token rotation.
 - [ ] Verify proof-upload malware handling, private storage permissions, retention, and deletion.
 - [ ] Test authorization using multiple accounts and direct API requests.
 - [ ] Review production headers, HTTPS, source-map publication, database privileges/RLS decision, logs, backups, and deployment secrets.
