@@ -52,7 +52,7 @@
 ## Core data model
 
 - **User:** email, password hash, display name, locality, purpose, skills, tools, active status, email verification state, token version, creation time.
-- **Task:** requester/worker IDs, title, description, category, required skills/tools, location and optional coordinates, integer minor-unit budget, currency, timezone-aware schedule, state, optimistic version, timestamps.
+- **Task:** requester/worker IDs, title, description, category, required skills/tools, public locality, optional private address, optional coordinates, integer minor-unit budget, currency, timezone-aware schedule, state, optimistic version, timestamps.
 - **TaskProof:** task/uploader IDs, proof kind, private storage key, original filename metadata, content type, byte size, creation time.
 - **TaskRating:** one rating per task, requester and worker IDs, score, private comment, timestamp. Worker directory exposes average and count, not public comments.
 - **CommunityDrive / DriveParticipation:** drive metadata, capacity, status and unique user participation.
@@ -62,7 +62,7 @@
 
 ## Security and correctness invariants
 
-1. Open tasks are discoverable to authenticated users. Non-open task details and list entries are limited to the requester and assigned worker.
+1. Open tasks are discoverable to authenticated users, but non-requesters receive only the public locality and coordinates rounded to two decimal places; the private address is withheld until acceptance. The requester and assigned worker can see the precise address. Non-open task details and list entries are limited to those participants.
 2. State transitions are checked server-side and serialized with PostgreSQL row locks. SQLite does not provide equivalent row-lock behavior; production concurrency tests must run against PostgreSQL.
 3. A task cannot be submitted for approval without fresh before-and-after images uploaded by its assigned worker during the current work attempt.
 4. Completion impact is recorded only when the requester approves the task. A partial unique index prevents duplicate task-completion events.
