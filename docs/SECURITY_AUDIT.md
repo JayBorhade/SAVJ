@@ -6,7 +6,7 @@
 
 ## Summary
 
-The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the phase-16 branch. The default `main` branch does not contain that full-stack backend, and the phase branches are stacked; phase 2 is documented as a merge blocker. Do not merge this branch directly to `main` ahead of the stack.
+The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the phase-16 branch. The default `main` branch does not yet contain the full-stack backend. Phase 2's merge conflict has been resolved and its CI passed, but the phase branches remain stacked and are not yet consolidated into `main`. Do not merge this branch directly to `main` out of order.
 
 ### Findings and disposition
 
@@ -35,15 +35,18 @@ The repository has a React/Vite frontend and a FastAPI/SQLAlchemy backend on the
 
 ## Release gates
 
-- [ ] Resolve the stacked PR dependency / phase-2 conflict and integrate the intended backend before applying the audit to the default branch.
+- [x] Resolve the Phase 2 branch conflict and verify its CI.
+- [ ] Consolidate the intended phase stack into `main` in dependency order before applying this audit to the default branch.
 - [ ] Run backend tests, frontend lint/typecheck/build, dependency audits, CodeQL, and secret scanning on the final merged tree; ensure all are green after dependency upgrades.
-- [ ] Commit a generated package-lock.json so frontend dependency resolution and audit results are reproducible.
+- [x] Commit a generated `package-lock.json` and use `npm ci` so frontend dependency resolution and audit results are reproducible.
 - [ ] Configure shared/distributed gateway rate limiting for all instances and add tests for limits, uploads, and cross-account authorization.
 - [x] Email verification and password reset now use hashed, single-use expiring tokens, SMTP STARTTLS support, anti-enumeration responses, and per-process abuse limits; live SMTP delivery still needs configuration and acceptance testing.
 - [ ] Add MFA and refresh-token rotation.
 - [ ] Verify proof-upload malware handling, private storage permissions, retention, and deletion.
-- [ ] Test authorization using multiple accounts and direct API requests.
+- [x] Add multi-account regression tests for task visibility, lifecycle transitions, proof permissions, ratings, and notification ownership.
+- [ ] Run browser end-to-end tests and direct API authorization checks against the final integrated deployment.
 - [ ] Review production headers, HTTPS, source-map publication, database privileges/RLS decision, logs, backups, and deployment secrets.
+- [ ] Integrate a compliant KYC provider/manual review and a payment/payout provider before enabling paid work; define refunds, disputes, fees, and settlement.
 - [ ] Perform staging DAST and an independent penetration test before public launch.
 
 **Important:** A checklist item marked absent or not verified is not a fix. Passing CI is evidence about the tested commit, not proof that the live deployment is secure.
