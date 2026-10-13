@@ -209,10 +209,14 @@ def _send_action_email_safely(recipient: str, purpose: str, raw_token: str) -> N
         logger.exception("SAVJ email delivery failed for action %s", purpose)
 
 
-def issue_auth_response(user: User, response: Response) -> TokenOut:
+def issue_auth_response(user: User, response: Response) -> TokenOut | JSONResponse:
     token, seconds = create_access_token(user.id, user.token_version)
     if _PRODUCTION:
-        response.set_cookie(
+        # Return the cookie-setting response itself so the Set-Cookie header is
+        # preserved by every ASGI middleware and response-model path.
+        payload = TokenOut(access_token=None, expires_in=seconds, user=user_output(user))
+        cookie_response = JSONResponse(content=payload.model_dump(mode="json"))
+        cookie_response.set_cookie(
             key=_ACCESS_COOKIE,
             value=token,
             max_age=seconds,
@@ -221,8 +225,7 @@ def issue_auth_response(user: User, response: Response) -> TokenOut:
             samesite="lax",
             path=_COOKIE_PATH,
         )
-        # Do not expose the bearer credential to JavaScript in production.
-        return TokenOut(access_token=None, expires_in=seconds, user=user_output(user))
+        return cookie_response
     return TokenOut(access_token=token, expires_in=seconds, user=user_output(user))
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
