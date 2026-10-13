@@ -11,12 +11,12 @@
 - React + TypeScript + Vite desktop-first SAVJ dashboard with responsive layout.
 - Personalized onboarding, name greeting, locality chip, task feed, search/category/radius controls, task creation, worker directory, community-drive UI, task messaging, impact/profile screens, map UI, and proof-review components.
 - Typed API client connects authentication, profile, task requirements, worker tools/ratings, drive, messaging, impact, proof, email verification, and password recovery routes to FastAPI.
-- Task creation exposes required skills/tools; workers can edit their tool inventory. Worker directory shows aggregate ratings, and community medals are derived from verified completions and drive participation.
+- Task creation exposes required skills/tools; workers can edit their tool inventory. Worker directory shows aggregate ratings, community medals derive from verified completions and drive participation, and the notification bell loads real task/drive updates.
 - Browser-local demo data remains available when signed out. Some dashboard sample content is illustrative and must not be mistaken for live backend data.
 - Production builds use Secure, HttpOnly, SameSite=Lax access cookies with Origin checks for cookie-authenticated writes; JavaScript does not receive the bearer token. Development retains the local bearer-token flow. Token-version checks revoke previous access tokens on logout; refresh-token rotation is not implemented.
 
 ### Backend
-- FastAPI + SQLAlchemy API for registration/login/logout, email verification, password recovery, profile, task discovery/lifecycle and requirements, worker directory/ratings, community drives, task messages, impact totals, and private before/after proof images.
+- FastAPI + SQLAlchemy API for registration/login/logout, email verification, password recovery, profile, task discovery/lifecycle and requirements, worker directory/ratings, community drives, task messages, user-scoped in-app notifications, impact totals, and private before/after proof images.
 - Passwords use salted PBKDF2-HMAC-SHA256; JWT parsing/signature/claim checks are strict.
 - Production configuration rejects weak placeholder JWT secrets, SQLite, wildcard CORS, and invalid production origins.
 - Proof uploads are size-limited, decoded/re-encoded, constrained by format/frame/pixel limits, and stored outside the frontend's public assets.
@@ -48,6 +48,7 @@ Security PR #18 targets `phase-16/launch-hardening`, not `main`. Phase 17 verifi
 - [x] Resolve the Phase 2 branch conflict and verify its CI.
 - [x] Generate and commit `package-lock.json`; use `npm ci` for repeatable CI installs and audits.
 - [x] Enforce required task skills/tools and one requester rating per completed task; derive community medals from verified activity.
+- [x] Deliver user-scoped in-app notifications for task state changes, messages, and drive participation, with read-state endpoints.
 - [ ] Consolidate the full phase stack into `main` in dependency order.
 - [ ] Re-run all CI/security workflows on the final integrated tree.
 - [x] Use HttpOnly production access cookies, SameSite protection, Origin validation for cookie-authenticated writes, and server-side token-version revocation on logout.
