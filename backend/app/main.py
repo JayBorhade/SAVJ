@@ -171,7 +171,13 @@ def list_tasks(db: Database, user: CurrentUser, status_filter: str | None = Quer
 @app.get("/api/v1/tasks/{task_id}", response_model=TaskOut)
 def get_task(task_id: int, user: CurrentUser, db: Database) -> Task:
     task = db.get(Task, task_id)
-    if not task: raise HTTPException(status_code=404, detail="Task not found.")
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    # Open tasks are discoverable to signed-in users. Once accepted, task details
+    # are private to the requester and assigned worker to avoid leaking location,
+    # schedule, budget, or participant identifiers to unrelated accounts.
+    if task.status != "Open" and user.id not in {task.requester_id, task.worker_id}:
+        raise HTTPException(status_code=404, detail="Task not found.")
     return task
 
 def transition(db: Session, task: Task, target: str, actor: User) -> Task:
@@ -182,15 +188,20 @@ def transition(db: Session, task: Task, target: str, actor: User) -> Task:
         if actor.purpose == "Requester": raise HTTPException(status_code=403, detail="Your account is not enabled for worker tasks.")
         if task.worker_id is not None: raise HTTPException(status_code=409, detail="This task has already been accepted.")
         task.worker_id = actor.id
-    elif target in {"In progress", "Awaiting approval"}:
-        if actor.id != task.worker_id: raise HTTPException(status_code=403, detail="Only the assigned worker can update this task.")
+    elif target == "In progress":
+        if task.status == "Awaiting approval":
+            if actor.id != task.requester_id:
+                raise HTTPException(status_code=403, detail="Only the requester can request rework.")
+        elif actor.id != task.worker_id:
+            raise HTTPException(status_code=403, detail="Only the assigned worker can start this task.")
+    elif target == "Awaiting approval":
+        if actor.id != task.worker_id:
+            raise HTTPException(status_code=403, detail="Only the assigned worker can submit this task for approval.")
     elif target == "Completed":
         if actor.id != task.requester_id: raise HTTPException(status_code=403, detail="Only the requester can approve completion.")
         db.add(ImpactEvent(user_id=task.worker_id or actor.id, task_id=task.id, event_type="task_completed", verified_at=datetime.now(timezone.utc)))
     elif target == "Cancelled":
         if actor.id not in {task.requester_id, task.worker_id}: raise HTTPException(status_code=403, detail="Only task participants can cancel this task.")
-    elif task.status == "Awaiting approval" and target == "In progress":
-        if actor.id != task.requester_id: raise HTTPException(status_code=403, detail="Only the requester can request rework.")
     task.status = target
     task.version += 1
     task.updated_at = datetime.now(timezone.utc)
