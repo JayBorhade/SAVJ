@@ -337,7 +337,7 @@ export default function App() {
     );
     setTasks((current) => [newTask, ...current]);
     setShowPostModal(false); setActivePage('Explore'); setSearch('');
-    setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskScheduledAt(''); setTaskCoordinates(null);
+    setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskRequiredSkills('Cleanup, Teamwork'); setTaskRequiredTools(''); setTaskScheduledAt(''); setTaskCoordinates(null);
     setNotice('Your task has been added to the local demo feed.');
   };
 
