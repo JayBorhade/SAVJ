@@ -49,9 +49,10 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
     monkeypatch.setattr(main_module, "_PRODUCTION", True)
     monkeypatch.setattr(main_module.settings, "app_env", "production")
     monkeypatch.setattr(main_module.settings, "cors_origins", "https://app.example.com")
-    client.cookies.clear()
+    secure_client = TestClient(app, base_url="https://testserver")
+    secure_client.cookies.clear()
     try:
-        response = client.post(
+        response = secure_client.post(
             "/api/v1/auth/register",
             json={"email": "cookie@example.com", "password": "test-password-123",
                   "display_name": "Cookie User", "locality": "Pune", "purpose": "Both"},
@@ -60,23 +61,22 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
         assert response.json()["access_token"] is None
         set_cookie = response.headers.get("set-cookie", "")
         assert "HttpOnly" in set_cookie and "Secure" in set_cookie and "SameSite=lax" in set_cookie
-        denied = client.post("/api/v1/auth/logout", base_url="https://testserver")
+        denied = secure_client.post("/api/v1/auth/logout")
         assert denied.status_code == 403
-        me = client.get(
+        me = secure_client.get(
             "/api/v1/me",
-            base_url="https://testserver",
             headers={"Origin": "https://app.example.com"},
         )
         assert me.status_code == 200, me.text
-        logout = client.post(
+        logout = secure_client.post(
             "/api/v1/auth/logout",
-            base_url="https://testserver",
             headers={"Origin": "https://app.example.com"},
         )
         assert logout.status_code == 204
-        assert client.get("/api/v1/me", base_url="https://testserver").status_code == 401
+        assert secure_client.get("/api/v1/me").status_code == 401
     finally:
-        client.cookies.clear()
+        secure_client.cookies.clear()
+        secure_client.close()
         monkeypatch.setattr(main_module, "_PRODUCTION", False)
         monkeypatch.setattr(main_module.settings, "app_env", "test")
         monkeypatch.setattr(main_module.settings, "cors_origins", "http://localhost:5173,http://127.0.0.1:5173")
