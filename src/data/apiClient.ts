@@ -34,7 +34,7 @@ export type ApiTask = {
 };
 
 export type AuthResult = {
-  access_token: string;
+  access_token: string | null;
   token_type: string;
   expires_in: number;
   user: ApiUser;
@@ -44,6 +44,11 @@ type ApiError = { detail?: string | Array<{ msg?: string }> };
 
 export function getAccessToken(): string | null {
   if (volatileAccessToken) return volatileAccessToken;
+  // Production uses HttpOnly cookies; remove any legacy persistent bearer token.
+  if (import.meta.env.PROD) {
+    try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
+    return null;
+  }
   try { return window.localStorage.getItem(TOKEN_KEY); }
   catch { return null; }
 }
@@ -53,11 +58,17 @@ export function clearAccessToken(): void {
   try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
 }
 
-function saveAccessToken(token: string): void {
-  // Keep this session usable when browser storage is disabled. Persistent storage
-  // remains a known security tradeoff documented in the security audit.
+function saveAccessToken(token: string | null): void {
   volatileAccessToken = token;
-  try { window.localStorage.setItem(TOKEN_KEY, token); } catch { /* fall back to in-memory session */ }
+  if (import.meta.env.PROD) {
+    try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
+    return;
+  }
+  if (token) {
+    try { window.localStorage.setItem(TOKEN_KEY, token); } catch { /* fall back to in-memory session */ }
+  } else {
+    try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
@@ -69,7 +80,7 @@ async function request<T>(path: string, init: RequestInit = {}, authenticated = 
   }
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, credentials: "include" });
   } catch {
     throw new Error('Cannot reach the SAVJ API. Start the backend and check VITE_SAVJ_API_URL.');
   }
@@ -98,6 +109,10 @@ export const savjApi = {
     authenticate('/api/v1/auth/register', payload),
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
+  logout: async () => {
+    await request<void>('/api/v1/auth/logout', { method: 'POST' });
+    clearAccessToken();
+  },
   me: () => request<ApiUser>('/api/v1/me'),
   listWorkers: (search = '', skill = '') => { const params = new URLSearchParams({ limit: '100' }); if (search.trim()) params.set('search', search.trim()); if (skill.trim()) params.set('skill', skill.trim()); return request<ApiWorker[]>(`/api/v1/workers?${params.toString()}`); },
   updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
@@ -133,7 +148,7 @@ export const savjApi = {
     const token = getAccessToken();
     if (token) headers.set('Authorization', 'Bearer ' + token);
     let response: Response;
-    try { response = await fetch(API_BASE_URL + '/api/v1/proofs/' + proofId + '/content', { headers }); }
+    try { response = await fetch(API_BASE_URL + '/api/v1/proofs/' + proofId + '/content', { headers, credentials: 'include' }); }
     catch { throw new Error('Cannot reach the SAVJ API.'); }
     if (!response.ok) {
       if (response.status === 401) clearAccessToken();
