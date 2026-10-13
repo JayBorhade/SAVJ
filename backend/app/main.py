@@ -267,6 +267,17 @@ def transition(db: Session, task: Task, target: str, actor: User) -> Task:
     elif target == "Awaiting approval":
         if actor.id != task.worker_id:
             raise HTTPException(status_code=403, detail="Only the assigned worker can submit this task for approval.")
+        # Each work attempt must have fresh before and after evidence uploaded
+        # by the assigned worker after the task was started or sent back for rework.
+        proof_kinds = set(db.scalars(
+            select(TaskProof.proof_kind).where(
+                TaskProof.task_id == task.id,
+                TaskProof.uploader_id == actor.id,
+                TaskProof.created_at >= task.updated_at,
+            )
+        ).all())
+        if not {"before", "after"}.issubset(proof_kinds):
+            raise HTTPException(status_code=409, detail="Upload fresh before and after proof images before submitting for approval.")
     elif target == "Completed":
         if actor.id != task.requester_id: raise HTTPException(status_code=403, detail="Only the requester can approve completion.")
         db.add(ImpactEvent(user_id=task.worker_id or actor.id, task_id=task.id, event_type="task_completed", verified_at=datetime.now(timezone.utc)))
