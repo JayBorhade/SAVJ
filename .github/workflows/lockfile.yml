@@ -1,0 +1,53 @@
+name: Generate frontend lockfile
+
+on:
+  push:
+    branches:
+      - "security/**"
+    paths:
+      - "package.json"
+      - ".github/workflows/lockfile.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: savj-lockfile-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lockfile:
+    if: ${{ hashFiles('package-lock.json') == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Generate deterministic npm lockfile without running package scripts
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify lockfile resolves and audit dependencies
+        run: |
+          npm ci --ignore-scripts
+          npm audit --audit-level=high
+      - name: Commit lockfile if missing
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          if [ -f package-lock.json ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            if ! git diff --cached --quiet; then
+              git commit -m "build: commit reproducible npm dependency lockfile"
+              git push origin "HEAD:${BRANCH_NAME}"
+            fi
+          else
+            echo "::error::npm did not create package-lock.json"
+            exit 1
+          fi
