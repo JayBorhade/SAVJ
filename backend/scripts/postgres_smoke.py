@@ -68,6 +68,9 @@ def main() -> None:
                 "required_skills": ["Cleanup"],
                 "required_tools": ["Gloves"],
                 "location_text": "Pune",
+                "private_location_text": "42 Smoke Lane, Pune",
+                "latitude": 18.5204,
+                "longitude": 73.8567,
                 "budget_rupees": 250,
             },
         )
@@ -75,7 +78,11 @@ def main() -> None:
         task = created.json()
         task_id = task["id"]
         assert task["required_skills"] == ["Cleanup"] and task["required_tools"] == ["Gloves"]
+        open_task = client.get(f"/api/v1/tasks/{task_id}", headers=auth(outsider))
+        assert open_task.status_code == 200 and open_task.json()["private_location_text"] is None
+        assert open_task.json()["latitude"] == 18.52 and open_task.json()["longitude"] == 73.86
         assert client.post(f"/api/v1/tasks/{task_id}/accept", headers=auth(worker)).status_code == 200
+        assert client.get(f"/api/v1/tasks/{task_id}", headers=auth(worker)).json()["private_location_text"] == "42 Smoke Lane, Pune"
         assert client.get(f"/api/v1/tasks/{task_id}", headers=auth(outsider)).status_code == 404
         assert client.post(f"/api/v1/tasks/{task_id}/start", headers=auth(worker)).status_code == 200
         upload_proof(client, task_id, worker, "before")
