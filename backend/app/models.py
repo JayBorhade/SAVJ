@@ -47,6 +47,7 @@ class Task(Base):
     required_skills_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
     required_tools_json: Mapped[str] = mapped_column(Text, default="[]", server_default="[]", nullable=False)
     location_text: Mapped[str] = mapped_column(String(200))
+    private_location_text: Mapped[str | None] = mapped_column(String(300), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True, index=True)
     budget_minor_units: Mapped[int] = mapped_column(Integer)
