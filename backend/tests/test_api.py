@@ -219,18 +219,22 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     accepted = client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(worker_token))
     assert accepted.status_code == 200, accepted.text
     assert accepted.json()["worker_id"] == worker["id"]
+    assert any(n["notification_type"] == "task_accepted" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/accept",headers=auth(outsider_token)).status_code == 409
     assert client.get(f"/api/v1/tasks/{task['id']}",headers=auth(outsider_token)).status_code == 404
     outsider_tasks = client.get("/api/v1/tasks",headers=auth(outsider_token),params={"status":"Accepted"})
     assert outsider_tasks.status_code == 200
     assert all(item["id"] != task["id"] for item in outsider_tasks.json())
     assert client.post(f"/api/v1/tasks/{task['id']}/start",headers=auth(worker_token)).status_code == 200
+    assert any(n["notification_type"] == "task_started" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 409
     upload_pair(task["id"], worker_token)
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
+    assert any(n["notification_type"] == "task_submitted" for n in client.get("/api/v1/me/notifications",headers=auth(requester_token)).json())
     # Requesters can ask for rework; a new proof pair is required for resubmission.
     rework = client.post(f"/api/v1/tasks/{task['id']}/start",headers=auth(requester_token))
     assert rework.status_code == 200 and rework.json()["status"] == "In progress"
+    assert any(n["notification_type"] == "task_rework" for n in client.get("/api/v1/me/notifications",headers=auth(worker_token)).json())
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 409
     upload_pair(task["id"], worker_token)
     assert client.post(f"/api/v1/tasks/{task['id']}/submit",headers=auth(worker_token)).status_code == 200
@@ -251,6 +255,14 @@ def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     worker_rows = client.get("/api/v1/workers",headers=auth(requester_token)).json()
     worker_row = next(item for item in worker_rows if item["id"] == worker["id"])
     assert worker_row["rating_average"] == 5.0 and worker_row["rating_count"] == 1
+    requester_notifications = client.get("/api/v1/me/notifications",headers=auth(requester_token)).json()
+    assert client.get("/api/v1/me/notifications",headers=auth(outsider_token)).json() == []
+    unread = next((item for item in requester_notifications if item["read_at"] is None), None)
+    if unread:
+        marked = client.post(f"/api/v1/me/notifications/{unread['id']}/read",headers=auth(requester_token))
+        assert marked.status_code == 200 and marked.json()["read_at"] is not None
+    read_all = client.post("/api/v1/me/notifications/read-all",headers=auth(requester_token))
+    assert read_all.status_code == 200 and read_all.json()["updated"] >= 0
 
 def test_drives_and_task_scoped_messages():
     owner_token, _ = register("driveowner@example.com","Drive Owner")
