@@ -44,6 +44,9 @@
 | GET | `/api/v1/workers` | Search worker profiles, skills/tools, and aggregate task ratings. |
 | GET | `/api/v1/tasks/{task_id}/rating` | Read a rating for task participants; returns null if unrated. |
 | POST | `/api/v1/tasks/{task_id}/rating` | Requester rates a completed task once, score 1–5. |
+| GET | `/api/v1/me/notifications` | List only the authenticated user’s notifications. |
+| POST | `/api/v1/me/notifications/{notification_id}/read` | Mark one owned notification read. |
+| POST | `/api/v1/me/notifications/read-all` | Mark all of the authenticated user’s notifications read. |
 | GET | `/api/v1/me/impact` | Return server-recorded verified completions and joined drives. |
 
 ## Core data model
@@ -55,6 +58,7 @@
 - **CommunityDrive / DriveParticipation:** drive metadata, capacity, status and unique user participation.
 - **Message:** task ID, sender ID, body and timestamps.
 - **ImpactEvent:** server-created completion events. The impact dashboard's medals are derived from verified completions and drive participation.
+- **UserNotification:** per-user task/drive activity notices with read state; task state changes, messages, and drive joins create notifications within the same transaction.
 
 ## Security and correctness invariants
 
@@ -68,7 +72,8 @@
 8. Money is stored as integer minor units. **A budget is not a payment:** payment collection, escrow, worker payouts, refunds and disputes are not implemented.
 9. Login/register/email action throttling is process-local defense-in-depth. A shared gateway/distributed limiter is required for multi-worker production.
 10. KYC/identity verification, MFA, refresh-token rotation, malware scanning, managed object storage and public moderation/reporting are not implemented. Do not present profiles as KYC-verified.
-11. The current API returns FastAPI validation/error responses and does not yet attach a universal request ID or custom error code envelope.
+11. Notifications are user-scoped and do not expose message bodies; task notifications link only to tasks the user can access. Notification delivery is in-app only; email/push delivery is not implemented.
+12. The current API returns FastAPI validation/error responses and does not yet attach a universal request ID or custom error code envelope.
 
 ## Deployment and release gates
 
