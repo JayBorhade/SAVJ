@@ -39,6 +39,7 @@ export function transitionTaskStatus(from: TaskStatus, to: TaskStatus): TaskTran
 export type TaskDraft = {
   title: string;
   location: string;
+  privateLocation?: string;
   budget: string | number;
   description?: string;
   date?: string;
