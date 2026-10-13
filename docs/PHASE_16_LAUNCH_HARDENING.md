@@ -19,7 +19,7 @@
 - Test backup restoration and database migrations against a staging copy before rollout.
 
 ### 2. Identity, account recovery, and worker trust
-- Email verification and password reset require an email delivery provider, signed single-use tokens, expiry, anti-enumeration responses, and abuse controls.
+- Email verification and password reset are implemented with hashed single-use tokens, expiry, anti-enumeration request responses, SMTP STARTTLS support, and per-process rate limits. A real SMTP provider, deliverability checks, and production acceptance tests are still required.
 - KYC requires an approved identity-verification provider or documented manual review, consent, secure document handling, reviewer permissions, status history, and deletion/retention rules. A profile purpose or skills list is not KYC.
 - Do not display verified badges until verification has actually succeeded and the server enforces the status.
 
