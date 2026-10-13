@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
 from io import BytesIO
 from pathlib import Path
@@ -11,6 +12,7 @@ from PIL import Image
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("JWT_SECRET", "test-secret-that-is-long-enough-for-local-tests")
 os.environ.setdefault("SAVJ_UPLOAD_DIR", str(Path(tempfile.gettempdir()) / "savj-postgres-private-uploads"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi.testclient import TestClient
 from app.main import app
