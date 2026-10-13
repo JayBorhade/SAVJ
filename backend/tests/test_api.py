@@ -110,6 +110,62 @@ def test_production_auth_uses_secure_cookie_and_origin_checks(monkeypatch):
         monkeypatch.setattr(main_module.settings, "cors_origins", "http://localhost:5173,http://127.0.0.1:5173")
 
 
+def test_email_verification_and_password_reset_tokens_are_single_use(monkeypatch):
+    from app import main as main_module
+
+    sent = []
+    monkeypatch.setattr(main_module, "_PRODUCTION", True)
+    monkeypatch.setattr(main_module, "_send_action_email", lambda recipient, purpose, token: sent.append((recipient, purpose, token)))
+    client.cookies.clear()
+    register_response = client.post(
+        "/api/v1/auth/register",
+        json={"email": "verify-flow@example.com", "password": "test-password-123",
+              "display_name": "Verify Flow", "locality": "Pune", "purpose": "Both"},
+    )
+    assert register_response.status_code == 201, register_response.text
+    assert register_response.json()["requires_email_verification"] is True
+    assert register_response.json()["access_token"] is None
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "verify-flow@example.com", "password": "test-password-123"},
+    ).status_code == 403
+
+    verify_token = sent[-1][2]
+    verified = client.post("/api/v1/auth/verify-email", json={"token": verify_token})
+    assert verified.status_code == 200
+    assert client.post("/api/v1/auth/verify-email", json={"token": verify_token}).status_code == 400
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "verify-flow@example.com", "password": "test-password-123"},
+    ).status_code == 200
+
+    reset_request = client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": "verify-flow@example.com"},
+    )
+    assert reset_request.status_code == 202
+    assert "verify-flow@example.com" not in reset_request.text
+    reset_token = sent[-1][2]
+    reset = client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": reset_token, "new_password": "new-test-password-456"},
+    )
+    assert reset.status_code == 200
+    assert client.post(
+        "/api/v1/auth/password-reset/confirm",
+        json={"token": reset_token, "new_password": "another-password-789"},
+    ).status_code == 400
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "verify-flow@example.com", "password": "test-password-123"},
+    ).status_code == 401
+    assert client.post(
+        "/api/v1/auth/login",
+        json={"email": "verify-flow@example.com", "password": "new-test-password-456"},
+    ).status_code == 200
+    client.cookies.clear()
+
+
 def test_task_lifecycle_permissions_and_impact(tmp_path, monkeypatch):
     from app import main as main_module
     monkeypatch.setattr(main_module, "UPLOAD_DIR", tmp_path / "task-proof-files")
