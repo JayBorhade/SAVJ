@@ -316,21 +316,24 @@ export default function App() {
     event.preventDefault();
     const validation = validateTaskDraft({ title: taskTitle, location: taskLocation, budget: taskBudget });
     if (!validation.valid) { setNotice(Object.values(validation.errors).filter(Boolean).join(' ')); return; }
+    const requiredSkills = parseCommaSeparated(taskRequiredSkills);
+    const requiredTools = parseCommaSeparated(taskRequiredTools);
+    if ([...requiredSkills, ...requiredTools].some((item) => item.length > 80)) { setNotice('Each required skill or tool must be 80 characters or fewer.'); return; }
     if (taskScheduledAt && (!Number.isFinite(new Date(taskScheduledAt).getTime()) || new Date(taskScheduledAt).getTime() <= Date.now())) { setNotice('Choose a future date and time, or leave the schedule blank.'); return; }
     if (backendConnected) {
       setApiBusy(true);
       try {
-        const created = await savjApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim(), category: taskCategory, location_text: taskLocation.trim(), budget_rupees: validation.budget, required_skills: parseCommaSeparated(taskRequiredSkills), required_tools: parseCommaSeparated(taskRequiredTools), latitude: taskCoordinates?.latitude ?? null, longitude: taskCoordinates?.longitude ?? null, scheduled_at: taskScheduledAt ? new Date(taskScheduledAt).toISOString() : null });
+        const created = await savjApi.createTask({ title: taskTitle.trim(), description: taskDescription.trim(), category: taskCategory, location_text: taskLocation.trim(), budget_rupees: validation.budget, required_skills: requiredSkills, required_tools: requiredTools, latitude: taskCoordinates?.latitude ?? null, longitude: taskCoordinates?.longitude ?? null, scheduled_at: taskScheduledAt ? new Date(taskScheduledAt).toISOString() : null });
         const newTask = fromApiTask(created);
         setTasks((current) => [newTask, ...current]); setShowPostModal(false); setActivePage('Explore'); setSearch('');
-        setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskScheduledAt(''); setTaskCoordinates(null); setNotice('Task posted to the SAVJ backend.');
+        setTaskTitle(''); setTaskDescription(''); setTaskBudget('500'); setTaskCategory('Community cleanup'); setTaskRequiredSkills('Cleanup, Teamwork'); setTaskRequiredTools(''); setTaskScheduledAt(''); setTaskCoordinates(null); setNotice('Task posted to the SAVJ backend.');
       } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not post task.'); }
       finally { setApiBusy(false); }
       return;
     }
     const newTask: Task = createBrowserTaskRepository().create(
       { title: taskTitle, location: taskLocation, budget: validation.budget, description: taskDescription },
-      { category: taskCategory, distance: 1.5, date: taskScheduledAt ? new Date(taskScheduledAt).toLocaleString() : 'Schedule to be confirmed', skills: parseCommaSeparated(taskRequiredSkills), tools: parseCommaSeparated(taskRequiredTools), status: 'Open', icon: /tree|plant/i.test(taskCategory) ? 'tree' : /water|lake/i.test(taskCategory) ? 'water' : /waste|recycl/i.test(taskCategory) ? 'recycle' : 'leaf' },
+      { category: taskCategory, distance: 1.5, date: taskScheduledAt ? new Date(taskScheduledAt).toLocaleString() : 'Schedule to be confirmed', skills: requiredSkills, tools: requiredTools, status: 'Open', icon: /tree|plant/i.test(taskCategory) ? 'tree' : /water|lake/i.test(taskCategory) ? 'water' : /waste|recycl/i.test(taskCategory) ? 'recycle' : 'leaf' },
     );
     setTasks((current) => [newTask, ...current]);
     setShowPostModal(false); setActivePage('Explore'); setSearch('');
