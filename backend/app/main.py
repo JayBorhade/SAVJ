@@ -1,5 +1,11 @@
 import json
 import os
+import hashlib
+import secrets
+import smtplib
+import ssl
+import logging
+from email.message import EmailMessage
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
@@ -7,6 +13,7 @@ from io import BytesIO
 import warnings
 import threading
 import time
+from datetime import timedelta
 from math import asin, cos, radians, sin, sqrt
 from typing import Annotated
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, Response, UploadFile
@@ -19,11 +26,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CommunityDrive, DriveParticipation, ImpactEvent, Message, Task, TaskProof, User
-from .schemas import DriveCreate, DriveOut, MessageCreate, MessageOut, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
+from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, User
+from .schemas import DriveCreate, DriveOut, EmailAddressRequest, EmailTokenRequest, MessageCreate, MessageOut, PasswordResetConfirm, TaskCreate, TaskOut, TaskProofOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
 from .security import create_access_token, decode_access_token_claims, hash_password, verify_password
 
 settings = get_settings()
+logger = logging.getLogger("savj.auth")
 app = FastAPI(title="SAVJ API", version="0.1.0", description="Authenticated API for the SAVJ environmental community platform.")
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origin_list, allow_credentials=True, allow_methods=["GET", "POST", "PATCH", "OPTIONS"], allow_headers=["Authorization", "Content-Type", "If-Match"])
 
@@ -39,7 +47,7 @@ async def security_headers(request, call_next):
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 # Per-process defense-in-depth limiter. Production must also enforce shared limits at its gateway.
-_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60)}
+_AUTH_LIMITS = {"/api/v1/auth/login": (10, 60), "/api/v1/auth/register": (5, 60), "/api/v1/auth/verification-request": (3, 3600), "/api/v1/auth/password-reset/request": (3, 3600), "/api/v1/auth/password-reset/confirm": (10, 3600)}
 _auth_attempts: dict[tuple[str, str], list[float]] = {}
 _auth_attempts_lock = threading.Lock()
 
@@ -108,6 +116,99 @@ def get_current_user(
     return user
 
 
+def _action_token_hash(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _create_action_token(db: Session, user: User, purpose: str, lifetime: timedelta) -> str:
+    # Serialize token issuance per user so an older link is invalidated when a
+    # newer verification/reset request is issued.
+    locked_user = db.scalar(select(User).where(User.id == user.id).with_for_update())
+    if not locked_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    now = datetime.now(timezone.utc)
+    active_tokens = db.scalars(
+        select(EmailActionToken).where(
+            EmailActionToken.user_id == user.id,
+            EmailActionToken.purpose == purpose,
+            EmailActionToken.used_at.is_(None),
+        )
+    ).all()
+    for active_token in active_tokens:
+        active_token.used_at = now
+    raw_token = secrets.token_urlsafe(32)
+    db.add(EmailActionToken(
+        user_id=user.id,
+        token_hash=_action_token_hash(raw_token),
+        purpose=purpose,
+        expires_at=now + lifetime,
+    ))
+    db.commit()
+    return raw_token
+
+
+def _send_action_email(recipient: str, purpose: str, raw_token: str) -> None:
+    if not settings.smtp_host or not settings.smtp_from or not settings.public_app_url:
+        raise RuntimeError("Email delivery is not configured.")
+    if purpose == "verify_email":
+        action = "verify-email"
+        subject = "Verify your SAVJ email address"
+        lead = "Verify your email address to activate your SAVJ account."
+    elif purpose == "password_reset":
+        action = "reset-password"
+        subject = "Reset your SAVJ password"
+        lead = "Use the secure link below to reset your SAVJ password."
+    else:
+        raise ValueError("Unsupported email action.")
+    url = f"{settings.public_app_url.rstrip('/')}/?action={action}&token={raw_token}"
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = settings.smtp_from
+    message["To"] = recipient
+    message.set_content(
+        f"{lead}\n\n{url}\n\n"
+        "If you did not request this, you can ignore this message. "
+        "For your security, this link expires and can only be used once."
+    )
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as server:
+        server.ehlo()
+        if settings.smtp_starttls:
+            server.starttls(context=ssl.create_default_context())
+            server.ehlo()
+        if settings.smtp_username:
+            server.login(settings.smtp_username, settings.smtp_password or "")
+        server.send_message(message)
+
+
+def _valid_action_token(db: Session, raw_token: str, purpose: str) -> EmailActionToken | None:
+    token = db.scalar(
+        select(EmailActionToken)
+        .where(
+            EmailActionToken.token_hash == _action_token_hash(raw_token),
+            EmailActionToken.purpose == purpose,
+            EmailActionToken.used_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if not token:
+        return None
+    expiry = token.expires_at
+    if expiry.tzinfo is None or expiry.utcoffset() is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    if expiry <= datetime.now(timezone.utc):
+        return None
+    return token
+
+
+def _send_action_email_safely(recipient: str, purpose: str, raw_token: str) -> None:
+    try:
+        _send_action_email(recipient, purpose, raw_token)
+    except Exception:
+        # Do not log raw tokens or full action URLs. The caller returns an
+        # anti-enumeration response and users can safely request a new email.
+        logger.exception("SAVJ email delivery failed for action %s", purpose)
+
+
 def issue_auth_response(user: User, response: Response) -> TokenOut:
     token, seconds = create_access_token(user.id, user.token_version)
     if _PRODUCTION:
@@ -143,7 +244,15 @@ def health() -> dict[str, str]:
 @app.post("/api/v1/auth/register", response_model=TokenOut, status_code=201)
 def register(payload: UserCreate, response: Response, db: Database) -> TokenOut:
     email = str(payload.email).lower()
-    user = User(email=email, display_name=payload.display_name.strip(), password_hash=hash_password(payload.password), locality=payload.locality.strip(), purpose=payload.purpose, skills_json=json.dumps(sorted({s.strip() for s in payload.skills if s.strip()})))
+    user = User(
+        email=email,
+        display_name=payload.display_name.strip(),
+        password_hash=hash_password(payload.password),
+        locality=payload.locality.strip(),
+        purpose=payload.purpose,
+        skills_json=json.dumps(sorted({s.strip() for s in payload.skills if s.strip()})),
+        is_email_verified=not _PRODUCTION,
+    )
     db.add(user)
     try:
         db.commit()
@@ -151,6 +260,10 @@ def register(payload: UserCreate, response: Response, db: Database) -> TokenOut:
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="An account with this email already exists.") from None
+    if _PRODUCTION:
+        raw_token = _create_action_token(db, user, "verify_email", timedelta(hours=24))
+        _send_action_email_safely(user.email, "verify_email", raw_token)
+        return TokenOut(access_token=None, expires_in=0, user=user_output(user), requires_email_verification=True)
     return issue_auth_response(user, response)
 
 @app.post("/api/v1/auth/login", response_model=TokenOut)
@@ -158,7 +271,67 @@ def login(payload: UserLogin, response: Response, db: Database) -> TokenOut:
     user = db.scalar(select(User).where(User.email == str(payload.email).lower()))
     if not user or not verify_password(payload.password, user.password_hash) or not user.is_active:
         raise HTTPException(status_code=401, detail="Email or password is incorrect.")
+    if _PRODUCTION and not user.is_email_verified:
+        raise HTTPException(status_code=403, detail="Verify your email address before signing in.")
     return issue_auth_response(user, response)
+
+
+@app.post("/api/v1/auth/verification-request", status_code=202)
+def request_email_verification(payload: EmailAddressRequest, db: Database) -> dict[str, str]:
+    user = db.scalar(select(User).where(User.email == str(payload.email).lower()))
+    if user and user.is_active and not user.is_email_verified:
+        raw_token = _create_action_token(db, user, "verify_email", timedelta(hours=24))
+        _send_action_email_safely(user.email, "verify_email", raw_token)
+    return {"message": "If this account needs verification, an email will be sent shortly."}
+
+
+@app.post("/api/v1/auth/verify-email")
+def verify_email(payload: EmailTokenRequest, db: Database) -> dict[str, str]:
+    token = _valid_action_token(db, payload.token, "verify_email")
+    if not token:
+        raise HTTPException(status_code=400, detail="This verification link is invalid or expired.")
+    user = db.get(User, token.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=400, detail="This verification link is invalid or expired.")
+    token.used_at = datetime.now(timezone.utc)
+    user.is_email_verified = True
+    db.commit()
+    return {"message": "Email verified. You can now sign in to SAVJ."}
+
+
+@app.post("/api/v1/auth/password-reset/request", status_code=202)
+def request_password_reset(payload: EmailAddressRequest, db: Database) -> dict[str, str]:
+    user = db.scalar(select(User).where(User.email == str(payload.email).lower()))
+    if user and user.is_active:
+        raw_token = _create_action_token(db, user, "password_reset", timedelta(minutes=30))
+        _send_action_email_safely(user.email, "password_reset", raw_token)
+    return {"message": "If an active account exists, password-reset instructions will be sent shortly."}
+
+
+@app.post("/api/v1/auth/password-reset/confirm")
+def confirm_password_reset(payload: PasswordResetConfirm, db: Database) -> dict[str, str]:
+    token = _valid_action_token(db, payload.token, "password_reset")
+    if not token:
+        raise HTTPException(status_code=400, detail="This password-reset link is invalid or expired.")
+    user = db.get(User, token.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=400, detail="This password-reset link is invalid or expired.")
+    now = datetime.now(timezone.utc)
+    token.used_at = now
+    other_tokens = db.scalars(
+        select(EmailActionToken).where(
+            EmailActionToken.user_id == user.id,
+            EmailActionToken.purpose == "password_reset",
+            EmailActionToken.used_at.is_(None),
+            EmailActionToken.id != token.id,
+        )
+    ).all()
+    for other in other_tokens:
+        other.used_at = now
+    user.password_hash = hash_password(payload.new_password)
+    user.token_version += 1
+    db.commit()
+    return {"message": "Password reset successfully. Sign in with your new password."}
 
 
 @app.post("/api/v1/auth/logout", status_code=204)
