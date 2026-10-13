@@ -21,13 +21,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, UnidentifiedImageError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .config import get_settings
 from .database import Base, engine, get_db
-from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, TaskRating, User
-from .schemas import DriveCreate, DriveOut, EmailAddressRequest, EmailTokenRequest, MessageCreate, MessageOut, PasswordResetConfirm, TaskCreate, TaskOut, TaskProofOut, TaskRatingCreate, TaskRatingOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
+from .models import CommunityDrive, DriveParticipation, EmailActionToken, ImpactEvent, Message, Task, TaskProof, TaskRating, User, UserNotification
+from .schemas import DriveCreate, DriveOut, EmailAddressRequest, EmailTokenRequest, MessageCreate, MessageOut, NotificationOut, PasswordResetConfirm, TaskCreate, TaskOut, TaskProofOut, TaskRatingCreate, TaskRatingOut, TokenOut, UserCreate, UserLogin, UserOut, UserUpdate, WorkerOut
 from .security import create_access_token, decode_access_token_claims, hash_password, verify_password
 
 settings = get_settings()
@@ -506,6 +506,37 @@ def transition(db: Session, task: Task, target: str, actor: User) -> Task:
         db.add(ImpactEvent(user_id=task.worker_id or actor.id, task_id=task.id, event_type="task_completed", verified_at=datetime.now(timezone.utc)))
     elif target == "Cancelled":
         if actor.id not in {task.requester_id, task.worker_id}: raise HTTPException(status_code=403, detail="Only task participants can cancel this task.")
+    recipient_id: int | None = None
+    notification_type = "task_status"
+    notification_title = "Task updated"
+    notification_body = f"{task.title}: {target.lower()}."
+    if target == "Accepted":
+        recipient_id, notification_type, notification_title = task.requester_id, "task_accepted", "Your task was accepted"
+        notification_body = f"{task.title} has been accepted by a worker."
+    elif target == "In progress" and task.status == "Accepted":
+        recipient_id, notification_type, notification_title = task.requester_id, "task_started", "Work has started"
+        notification_body = f"A worker has started: {task.title}."
+    elif target == "In progress" and task.status == "Awaiting approval":
+        recipient_id, notification_type, notification_title = task.worker_id, "task_rework", "Rework requested"
+        notification_body = f"The requester asked for changes to: {task.title}."
+    elif target == "Awaiting approval":
+        recipient_id, notification_type, notification_title = task.requester_id, "task_submitted", "Work is ready for review"
+        notification_body = f"The worker submitted {task.title} for your approval."
+    elif target == "Completed":
+        recipient_id, notification_type, notification_title = task.worker_id, "task_completed", "Task completion approved"
+        notification_body = f"The requester approved your work on {task.title}."
+    elif target == "Cancelled":
+        recipient_id = task.worker_id if actor.id == task.requester_id else task.requester_id
+        notification_type, notification_title = "task_cancelled", "Task cancelled"
+        notification_body = f"{task.title} was cancelled."
+    if recipient_id and recipient_id != actor.id:
+        db.add(UserNotification(
+            user_id=recipient_id,
+            notification_type=notification_type,
+            title=notification_title,
+            body=notification_body,
+            task_id=task.id,
+        ))
     task.status = target
     task.version += 1
     task.updated_at = datetime.now(timezone.utc)
@@ -599,6 +630,43 @@ def list_workers(db: Database, user: CurrentUser, search: str | None = None, ski
         results.append(WorkerOut(id=person.id, display_name=person.display_name, locality=person.locality, purpose=person.purpose, skills=skills, tools=json.loads(person.tools_json), rating_average=round(average, 2) if count else None, rating_count=count, created_at=person.created_at))
     return results
 
+@app.get("/api/v1/me/notifications", response_model=list[NotificationOut])
+def list_notifications(user: CurrentUser, db: Database, limit: int = Query(default=50, ge=1, le=100)) -> list[UserNotification]:
+    return list(db.scalars(
+        select(UserNotification)
+        .where(UserNotification.user_id == user.id)
+        .order_by(UserNotification.created_at.desc(), UserNotification.id.desc())
+        .limit(limit)
+    ).all())
+
+
+@app.post("/api/v1/me/notifications/{notification_id}/read", response_model=NotificationOut)
+def mark_notification_read(notification_id: int, user: CurrentUser, db: Database) -> UserNotification:
+    notification = db.scalar(
+        select(UserNotification)
+        .where(UserNotification.id == notification_id, UserNotification.user_id == user.id)
+        .with_for_update()
+    )
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+    if notification.read_at is None:
+        notification.read_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(notification)
+    return notification
+
+
+@app.post("/api/v1/me/notifications/read-all")
+def mark_all_notifications_read(user: CurrentUser, db: Database) -> dict[str, int]:
+    result = db.execute(
+        update(UserNotification)
+        .where(UserNotification.user_id == user.id, UserNotification.read_at.is_(None))
+        .values(read_at=datetime.now(timezone.utc))
+    )
+    db.commit()
+    return {"updated": int(result.rowcount or 0)}
+
+
 @app.get("/api/v1/me/impact")
 def my_impact(user: CurrentUser, db: Database) -> dict[str, int]:
     completed = db.scalar(select(func.count(ImpactEvent.id)).where(ImpactEvent.user_id == user.id, ImpactEvent.event_type == "task_completed", ImpactEvent.verified_at.is_not(None))) or 0
@@ -614,6 +682,15 @@ def list_messages(task_id: int, user: CurrentUser, db: Database, limit: int = Qu
 def send_message(task_id: int, payload: MessageCreate, user: CurrentUser, db: Database) -> Message:
     task_access(db, task_id, user.id)
     message = Message(task_id=task_id, sender_id=user.id, body=payload.body.strip())
+    recipient_id = task.worker_id if user.id == task.requester_id else task.requester_id
+    if recipient_id and recipient_id != user.id:
+        db.add(UserNotification(
+            user_id=recipient_id,
+            notification_type="task_message",
+            title="New task message",
+            body=f"New message on {task.title}.",
+            task_id=task.id,
+        ))
     db.add(message)
     db.commit()
     db.refresh(message)
