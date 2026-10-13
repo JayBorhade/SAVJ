@@ -602,6 +602,14 @@ def join_drive(drive_id: int, user: CurrentUser, db: Database) -> dict[str, str]
     count = db.scalar(select(func.count(DriveParticipation.id)).where(DriveParticipation.drive_id == drive_id)) or 0
     if drive.capacity is not None and count >= drive.capacity: raise HTTPException(status_code=409, detail="This drive is full.")
     db.add(DriveParticipation(drive_id=drive_id, user_id=user.id))
+    if drive.organizer_id != user.id:
+        db.add(UserNotification(
+            user_id=drive.organizer_id,
+            notification_type="drive_joined",
+            title="Someone joined your drive",
+            body=f"{user.display_name} joined {drive.title}.",
+            drive_id=drive.id,
+        ))
     try: db.commit()
     except IntegrityError:
         db.rollback()
