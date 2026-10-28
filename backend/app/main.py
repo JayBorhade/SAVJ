@@ -304,7 +304,7 @@ def login(payload: UserLogin, response: Response, db: Database) -> TokenOut:
         raise HTTPException(status_code=401, detail="Email or password is incorrect.")
     if _PRODUCTION and not user.is_email_verified:
         raise HTTPException(status_code=403, detail="Verify your email address before signing in.")
-    return issue_auth_response(user, response)
+    return issue_auth_response(user, response, db)
 
 
 @app.post("/api/v1/auth/verification-request", status_code=202)
