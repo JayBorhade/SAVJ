@@ -2,6 +2,7 @@ import type { TaskStatus } from '../domain/taskWorkflow';
 
 const API_BASE_URL = (import.meta.env.VITE_SAVJ_API_URL || (import.meta.env.PROD ? '' : 'http://127.0.0.1:8000')).replace(/\/$/, '');
 const TOKEN_KEY = 'savj.accessToken';
+let volatileAccessToken: string | null = null;
 
 export type ApiUser = {
   id: number;
@@ -10,6 +11,7 @@ export type ApiUser = {
   locality: string;
   purpose: string;
   skills: string[];
+  tools: string[];
   created_at: string;
 };
 
@@ -20,7 +22,10 @@ export type ApiTask = {
   title: string;
   description: string;
   category: string;
+  required_skills: string[];
+  required_tools: string[];
   location_text: string;
+  private_location_text: string | null;
   latitude: number | null;
   longitude: number | null;
   budget_minor_units: number;
@@ -32,25 +37,64 @@ export type ApiTask = {
   updated_at: string;
 };
 
+export type ApiNotification = {
+  id: number;
+  notification_type: string;
+  title: string;
+  body: string;
+  task_id: number | null;
+  drive_id: number | null;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type ApiTaskRating = {
+  id: number;
+  task_id: number;
+  requester_id: number;
+  worker_id: number;
+  score: number;
+  comment: string;
+  created_at: string;
+};
+
 export type AuthResult = {
-  access_token: string;
+  access_token: string | null;
   token_type: string;
   expires_in: number;
   user: ApiUser;
+  requires_email_verification?: boolean;
 };
 
 type ApiError = { detail?: string | Array<{ msg?: string }> };
 
 export function getAccessToken(): string | null {
-  try { return window.localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  if (volatileAccessToken) return volatileAccessToken;
+  // Production uses HttpOnly cookies; remove any legacy persistent bearer token.
+  if (import.meta.env.PROD) {
+    try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
+    return null;
+  }
+  try { return window.localStorage.getItem(TOKEN_KEY); }
+  catch { return null; }
 }
 
 export function clearAccessToken(): void {
+  volatileAccessToken = null;
   try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
 }
 
-function saveAccessToken(token: string): void {
-  window.localStorage.setItem(TOKEN_KEY, token);
+function saveAccessToken(token: string | null): void {
+  volatileAccessToken = token;
+  if (import.meta.env.PROD) {
+    try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
+    return;
+  }
+  if (token) {
+    try { window.localStorage.setItem(TOKEN_KEY, token); } catch { /* fall back to in-memory session */ }
+  } else {
+    try { window.localStorage.removeItem(TOKEN_KEY); } catch { /* storage may be unavailable */ }
+  }
 }
 
 async function request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
@@ -62,7 +106,7 @@ async function request<T>(path: string, init: RequestInit = {}, authenticated = 
   }
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers, credentials: "include" });
   } catch {
     throw new Error('Cannot reach the SAVJ API. Start the backend and check VITE_SAVJ_API_URL.');
   }
@@ -87,13 +131,26 @@ async function authenticate(path: '/api/v1/auth/register' | '/api/v1/auth/login'
 }
 
 export const savjApi = {
-  register: (payload: { email: string; password: string; display_name: string; locality: string; purpose: string; skills: string[] }) =>
+  register: (payload: { email: string; password: string; display_name: string; locality: string; purpose: string; skills: string[]; tools: string[] }) =>
     authenticate('/api/v1/auth/register', payload),
   login: (email: string, password: string) =>
     authenticate('/api/v1/auth/login', { email, password }),
+  requestEmailVerification: (email: string) =>
+    request<{ message: string }>('/api/v1/auth/verification-request', { method: 'POST', body: JSON.stringify({ email }) }, false),
+  verifyEmail: (token: string) =>
+    request<{ message: string }>('/api/v1/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }, false),
+  requestPasswordReset: (email: string) =>
+    request<{ message: string }>('/api/v1/auth/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) }, false),
+  confirmPasswordReset: (token: string, new_password: string) =>
+    request<{ message: string }>('/api/v1/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify({ token, new_password }) }, false),
+  logout: async () => {
+    await request<void>('/api/v1/auth/logout', { method: 'POST' });
+    clearAccessToken();
+  },
   me: () => request<ApiUser>('/api/v1/me'),
   listWorkers: (search = '', skill = '') => { const params = new URLSearchParams({ limit: '100' }); if (search.trim()) params.set('search', search.trim()); if (skill.trim()) params.set('skill', skill.trim()); return request<ApiWorker[]>(`/api/v1/workers?${params.toString()}`); },
-  updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
+  updateMe: (payload: { display_name?: string; locality?: string; purpose?: string; skills?: string[]; tools?: string[] }) => request<ApiUser>('/api/v1/me', { method: 'PATCH', body: JSON.stringify(payload) }),
+  getTask: (id: number) => request<ApiTask>(`/api/v1/tasks/${id}`),
   listTasks: (filters?: { latitude?: number; longitude?: number; radius_km?: number }) => {
     const params = new URLSearchParams({ limit: '100' });
     if (filters?.latitude !== undefined && filters.longitude !== undefined) {
@@ -103,10 +160,15 @@ export const savjApi = {
     }
     return request<ApiTask[]>(`/api/v1/tasks?${params.toString()}`);
   },
-  createTask: (payload: { title: string; description: string; category: string; location_text: string; budget_rupees: number; latitude?: number | null; longitude?: number | null; scheduled_at?: string | null }) =>
+  createTask: (payload: { title: string; description: string; category: string; required_skills: string[]; required_tools: string[]; location_text: string; private_location_text?: string | null; budget_rupees: number; latitude?: number | null; longitude?: number | null; scheduled_at?: string | null }) =>
     request<ApiTask>('/api/v1/tasks', { method: 'POST', body: JSON.stringify(payload) }),
   transitionTask: (id: number, action: 'accept' | 'start' | 'submit' | 'approve' | 'cancel') =>
     request<ApiTask>(`/api/v1/tasks/${id}/${action}`, { method: 'POST' }),
+  listNotifications: (limit = 50) => request<ApiNotification[]>(`/api/v1/me/notifications?limit=${limit}`),
+  markNotificationRead: (id: number) => request<ApiNotification>(`/api/v1/me/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () => request<{ updated: number }>('/api/v1/me/notifications/read-all', { method: 'POST' }),
+  getTaskRating: (id: number) => request<ApiTaskRating | null>(`/api/v1/tasks/${id}/rating`),
+  rateTask: (id: number, score: number, comment: string) => request<ApiTaskRating>(`/api/v1/tasks/${id}/rating`, { method: 'POST', body: JSON.stringify({ score, comment }) }),
   listDrives: () => request<Array<{ id: number; organizer_id: number; title: string; description: string; location_text: string; starts_at: string; capacity: number | null; status: string; participant_count: number }>>('/api/v1/drives'),
   joinDrive: (id: number) => request<{ status: string }>(`/api/v1/drives/${id}/join`, { method: 'POST' }),
   createDrive: (payload: { title: string; description: string; location_text: string; starts_at: string; capacity: number | null }) =>
@@ -126,7 +188,7 @@ export const savjApi = {
     const token = getAccessToken();
     if (token) headers.set('Authorization', 'Bearer ' + token);
     let response: Response;
-    try { response = await fetch(API_BASE_URL + '/api/v1/proofs/' + proofId + '/content', { headers }); }
+    try { response = await fetch(API_BASE_URL + '/api/v1/proofs/' + proofId + '/content', { headers, credentials: 'include' }); }
     catch { throw new Error('Cannot reach the SAVJ API.'); }
     if (!response.ok) {
       if (response.status === 401) clearAccessToken();
@@ -145,4 +207,4 @@ export type ApiDrive = {
 export type ApiMessage = { id: number; task_id: number; sender_id: number; body: string; created_at: string };
 export type ApiTaskProof = { id: number; task_id: number; uploader_id: number; proof_kind: 'before' | 'after'; original_name: string; content_type: string; size_bytes: number; created_at: string };
 
-export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; created_at: string };
+export type ApiWorker = { id: number; display_name: string; locality: string; purpose: string; skills: string[]; tools: string[]; rating_average: number | null; rating_count: number; created_at: string };

@@ -42,3 +42,54 @@
 .proof-fields input{max-width:100%;font-size:12px}
 .proof-fields small{color:#7a887c;font-size:10px;line-height:1.5}
 button:disabled{opacity:.45;cursor:not-allowed}
+
+
+.requirement-warning {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #d6a34a;
+  border-radius: 10px;
+  background: #fff8e8;
+  color: #704b0d;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+
+.medal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.medal-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-color, #dce6dd);
+  border-radius: 12px;
+  background: var(--card-background, #fff);
+}
+.medal-card.locked { opacity: 0.62; }
+.medal-mark { font-size: 1.65rem; line-height: 1; }
+.medal-card strong { display: block; margin-bottom: 4px; }
+.medal-card p { margin: 0 0 6px; font-size: 0.9rem; }
+.medal-card small { color: var(--muted-text, #65736a); }
+
+.worker-rating { margin-top: 4px; color: var(--muted-text, #65736a); font-size: 0.88rem; }
+
+
+.notification-count { position: absolute; top: -5px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; display: grid; place-items: center; border-radius: 999px; background: #c65d43; color: #fff; border: 2px solid #fff; font-size: 9px; font-weight: 800; line-height: 1; }
+.notification-popover { width: min(360px, calc(100vw - 32px)); max-height: min(520px, calc(100vh - 110px)); overflow: auto; }
+.notification-popover-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.notification-popover-head button { border: 0; background: transparent; color: #2e6140; font-size: 11px; font-weight: 700; }
+.notification-list { display: grid; gap: 7px; }
+.notification-item { display: grid; gap: 5px; text-align: left; padding: 10px; border: 1px solid #e5ebe2; border-radius: 9px; background: #fff; color: #294333; }
+.notification-item.unread { background: #f1f7ef; border-color: #cbdcc8; }
+.notification-item strong { font-size: 12px; }
+.notification-item span { font-size: 11px; line-height: 1.45; color: #68776c; }
+.notification-item small { font-size: 10px; color: #889389; }
+@media (max-width: 600px) { .notification-popover { right: -46px; } }
+
+.worker-tools { margin-top: 8px; color: var(--muted-text, #65736a); font-size: 0.86rem; line-height: 1.45; }
