@@ -1,0 +1,48 @@
+# SAVJ Backend
+
+FastAPI + SQLAlchemy backend for the SAVJ environmental community platform.
+
+## Run locally (Windows PowerShell)
+
+From the repository root:
+
+    py -3.11 -m venv backend/.venv
+    .\backend\.venv\Scripts\Activate.ps1
+    python -m pip install -r backend/requirements.txt
+    Copy-Item backend/.env.example backend/.env
+    python -m alembic -c backend/alembic.ini upgrade head
+    python -m uvicorn app.main:app --app-dir backend --reload --host 127.0.0.1 --port 8000
+
+Run the Alembic migration command before starting the API. Open http://127.0.0.1:8000/docs for interactive API docs and http://127.0.0.1:8000/health for health.
+
+## Implemented
+
+- Registration/login with PBKDF2 password hashes and expiring signed bearer tokens
+- Authenticated profile read/update
+- Task create/list/detail, optional latitude/longitude and radius-filtered discovery, plus server-enforced accept/start/submit/approve/cancel lifecycle
+- Community drive create/list/join with unique participation and capacity checks
+- Task-participant-only messaging\n- Private before/after task proof uploads (JPEG/PNG/WebP, 8 MB limit) with metadata, task-participant-only listing/download, and worker/status authorization
+- Verified completion and drive participation impact counters
+- SQLAlchemy relational models; SQLite locally and PostgreSQL via configured URL
+- Environment-driven CORS configuration
+
+## API
+
+- POST /api/v1/auth/register and /api/v1/auth/login
+- GET/PATCH /api/v1/me
+- GET/POST /api/v1/tasks and GET /api/v1/tasks/{id}
+- POST /api/v1/tasks/{id}/accept, /start, /submit, /approve, /cancel
+- GET/POST /api/v1/drives and POST /api/v1/drives/{id}/join
+- GET /api/v1/me/impact
+- GET/POST /api/v1/tasks/{id}/messages
+
+## Database migrations
+
+- The first migration is an idempotent baseline for existing development databases.
+- Existing databases created before proof uploads need an explicit migration to add the new proof metadata table; the baseline does not alter existing tables. Back up any database before migrating.
+- Run from the repository root: `python -m alembic -c backend/alembic.ini upgrade head`.
+- New schema changes should be authored as explicit Alembic revisions, not by relying on startup `create_all`.
+
+## Production limitations
+
+Not deployed or connected to the frontend yet. External identity/OAuth, email verification, password reset, rate limiting, database migrations, secure proof-file uploads, KYC, payments, geospatial queries, real-time messaging and end-to-end tests remain future work. Do not use this development backend for real paid jobs until proof storage and deployment security are in place. Configure a strong unique JWT_SECRET, managed PostgreSQL, HTTPS, restrictive CORS and monitoring before production. Never commit .env, database files or credentials.
